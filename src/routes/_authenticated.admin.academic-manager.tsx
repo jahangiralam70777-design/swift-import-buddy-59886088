@@ -1319,15 +1319,18 @@ function DonutCard({
 function SystemStatusCard({
   totalSubjects,
   totalChapters,
+  published,
+  draft,
   latest,
   loading,
 }: {
   totalSubjects: number;
   totalChapters: number;
+  published: number;
+  draft: number;
   latest: number;
   loading: boolean;
 }) {
-  const health = Math.min(100, 65 + Math.round(Math.sqrt(totalChapters * 4)));
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -1346,9 +1349,9 @@ function SystemStatusCard({
           </span>
           <div>
             <div className="text-sm font-semibold tracking-tight text-foreground">
-              System status
+              Live workspace
             </div>
-            <div className="text-xs text-muted-foreground">Live workspace metrics</div>
+            <div className="text-xs text-muted-foreground">Straight from Supabase</div>
           </div>
           <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-success/25 bg-success/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-success">
             <span className="relative flex h-1.5 w-1.5">
@@ -1361,10 +1364,16 @@ function SystemStatusCard({
 
         <div className="mt-5 space-y-3.5">
           <StatusRow
-            icon={Activity}
-            label="Content health"
-            value={loading ? "—" : `${health}%`}
+            icon={CheckCircle2}
+            label="Published chapters"
+            value={loading ? "—" : String(published)}
             tone="success"
+          />
+          <StatusRow
+            icon={Pencil}
+            label="Draft chapters"
+            value={loading ? "—" : String(draft)}
+            tone="default"
           />
           <StatusRow
             icon={Timer}
