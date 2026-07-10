@@ -1,16 +1,16 @@
 // Server functions for the Academic Manager.
 //
-// The client edits a nested `Level → Subject → Chapter` tree in memory.
-// `syncAcademicTree` accepts the full tree and reconciles it against
-// Supabase in one transactional-style pass:
-//   1. Upsert every level / subject / chapter with client-supplied UUIDs.
-//   2. Delete any DB row not present in the incoming tree (cascade removes
-//      subjects + chapters + attempts).
-//   3. Re-return the tree from the DB so the client picks up server-side
-//      timestamps.
+// SINGLE SOURCE OF TRUTH for the Level -> Subject -> Chapter hierarchy
+// and every count/metric displayed for it. Everything comes from the
+// database: no hashes, no random values, no placeholders.
 //
-// All writes require the caller to have the `admin` role. Reads are open
-// to any authenticated user (RLS handles the actual gating).
+// Counts are computed from real tables:
+//   - MCQ:  SELECT chapter_id FROM mcq_questions WHERE status='published'
+//   - Quiz: SELECT chapter_id FROM quizzes       WHERE status='published'
+//   - Mock: SELECT chapter_id FROM mock_tests    WHERE status='published'
+//
+// Chapter `status` (draft | published) also comes straight from the row;
+// a newly created chapter defaults to 'draft'.
 
 import { createServerFn } from "@tanstack/react-start";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -18,15 +18,20 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import type { Database } from "@/integrations/supabase/types";
 
 type DbClient = SupabaseClient<Database>;
-type LevelRow = Database["public"]["Tables"]["academic_levels"]["Row"];
+
+export type ChapterStatus = "draft" | "published";
 
 export type ApiChapter = {
   id: string;
   name: string;
   code: string;
   description: string;
+  status: ChapterStatus;
   createdAt: number;
   updatedAt: number;
+  mcqCount: number;
+  quizCount: number;
+  mockCount: number;
 };
 
 export type ApiSubject = {
@@ -58,26 +63,75 @@ async function assertAdmin(context: { supabase: DbClient; userId: string }) {
   if (!data) throw new Error("Forbidden: admin role required");
 }
 
+function normalizeStatus(v: unknown): ChapterStatus {
+  return v === "published" ? "published" : "draft";
+}
+
+// Count rows with status='published' grouped by chapter_id. Reads from real
+// tables. If the table does not exist yet (e.g. before the quizzes /
+// mock_tests migration has been applied on a given environment) the query
+// fails cleanly and we return an empty map so counts stay at 0 — never fake.
+async function countPublishedByChapter(
+  supabase: DbClient,
+  table: "mcq_questions" | "quizzes" | "mock_tests",
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  const client = supabase as unknown as {
+    from: (t: string) => {
+      select: (cols: string) => {
+        eq: (
+          col: string,
+          val: string,
+        ) => Promise<{
+          data: Array<{ chapter_id: string | null }> | null;
+          error: { message: string; code?: string } | null;
+        }>;
+      };
+    };
+  };
+  const { data, error } = await client.from(table).select("chapter_id").eq("status", "published");
+  if (error) {
+    // Missing table / column → treat as zero. Never guess a number.
+    console.warn(`[academic.counts] ${table}: ${error.message}`);
+    return map;
+  }
+  for (const row of data ?? []) {
+    if (!row.chapter_id) continue;
+    map.set(row.chapter_id, (map.get(row.chapter_id) ?? 0) + 1);
+  }
+  return map;
+}
+
 async function loadTree(supabase: DbClient): Promise<ApiLevel[]> {
-  const [levelsRes, subjectsRes, chaptersRes] = await Promise.all([
-    supabase.from("academic_levels").select("*").order("position"),
-    supabase.from("academic_subjects").select("*").order("position"),
-    supabase.from("academic_chapters").select("*").order("position"),
-  ]);
+  const [levelsRes, subjectsRes, chaptersRes, mcqCounts, quizCounts, mockCounts] =
+    await Promise.all([
+      supabase.from("academic_levels").select("*").order("position"),
+      supabase.from("academic_subjects").select("*").order("position"),
+      supabase.from("academic_chapters").select("*").order("position"),
+      countPublishedByChapter(supabase, "mcq_questions"),
+      countPublishedByChapter(supabase, "quizzes"),
+      countPublishedByChapter(supabase, "mock_tests"),
+    ]);
   if (levelsRes.error) throw new Error(levelsRes.error.message);
   if (subjectsRes.error) throw new Error(subjectsRes.error.message);
   if (chaptersRes.error) throw new Error(chaptersRes.error.message);
 
   const chaptersBySubject = new Map<string, ApiChapter[]>();
-  for (const c of chaptersRes.data ?? []) {
+  for (const c of (chaptersRes.data ?? []) as Array<
+    Database["public"]["Tables"]["academic_chapters"]["Row"] & { status?: string | null }
+  >) {
     const arr = chaptersBySubject.get(c.subject_id) ?? [];
     arr.push({
       id: c.id,
       name: c.name,
       code: c.slug ?? "",
       description: c.description ?? "",
+      status: normalizeStatus(c.status),
       createdAt: Date.parse(c.created_at),
       updatedAt: Date.parse(c.updated_at),
+      mcqCount: mcqCounts.get(c.id) ?? 0,
+      quizCount: quizCounts.get(c.id) ?? 0,
+      mockCount: mockCounts.get(c.id) ?? 0,
     });
     chaptersBySubject.set(c.subject_id, arr);
   }
@@ -97,7 +151,7 @@ async function loadTree(supabase: DbClient): Promise<ApiLevel[]> {
     subjectsByLevel.set(s.level_id, arr);
   }
 
-  return (levelsRes.data ?? []).map((l: LevelRow) => ({
+  return (levelsRes.data ?? []).map((l) => ({
     id: l.id,
     name: l.name,
     code: l.slug ?? "",
@@ -128,6 +182,7 @@ type TreeInput = {
         name: string;
         code: string;
         description: string;
+        status?: string;
       }>;
     }>;
   }>;
@@ -149,7 +204,6 @@ export const syncAcademicTree = createServerFn({ method: "POST" })
     await assertAdmin(context);
     const { supabase } = context;
 
-    // Prepare flat rows for upsert with position from array order.
     const levelRows = data.levels.map((l, i) => ({
       id: l.id,
       name: l.name,
@@ -165,14 +219,16 @@ export const syncAcademicTree = createServerFn({ method: "POST" })
       description: string;
       position: number;
     }> = [];
-    const chapterRows: Array<{
+    type ChapterUpsert = {
       id: string;
       subject_id: string;
       name: string;
       slug: string | null;
       description: string;
       position: number;
-    }> = [];
+      status?: ChapterStatus;
+    };
+    const chapterRows: ChapterUpsert[] = [];
     for (const l of data.levels) {
       l.subjects.forEach((s, si) => {
         subjectRows.push({
@@ -191,12 +247,12 @@ export const syncAcademicTree = createServerFn({ method: "POST" })
             slug: c.code || null,
             description: c.description,
             position: ci,
+            status: normalizeStatus(c.status),
           });
         });
       });
     }
 
-    // Upsert in parent-first order.
     if (levelRows.length) {
       const r = await supabase.from("academic_levels").upsert(levelRows, { onConflict: "id" });
       if (r.error) throw new Error(r.error.message);
@@ -206,11 +262,25 @@ export const syncAcademicTree = createServerFn({ method: "POST" })
       if (r.error) throw new Error(r.error.message);
     }
     if (chapterRows.length) {
-      const r = await supabase.from("academic_chapters").upsert(chapterRows, { onConflict: "id" });
+      // status column is added by migration; if it isn't present on this env
+      // yet, retry without status so writes still succeed.
+      const tbl = supabase.from("academic_chapters") as unknown as {
+        upsert: (
+          rows: unknown,
+          opts: { onConflict: string },
+        ) => Promise<{ error: { message: string; code?: string } | null }>;
+      };
+      let r = await tbl.upsert(chapterRows, { onConflict: "id" });
+      if (r.error && /status/i.test(r.error.message)) {
+        const stripped = chapterRows.map(({ status, ...rest }) => {
+          void status;
+          return rest;
+        });
+        r = await tbl.upsert(stripped, { onConflict: "id" });
+      }
       if (r.error) throw new Error(r.error.message);
     }
 
-    // Delete rows no longer present. Order: chapters → subjects → levels.
     const keepLevelIds = levelRows.map((r) => r.id);
     const keepSubjectIds = subjectRows.map((r) => r.id);
     const keepChapterIds = chapterRows.map((r) => r.id);

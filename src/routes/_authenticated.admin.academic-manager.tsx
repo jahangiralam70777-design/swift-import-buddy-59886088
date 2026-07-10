@@ -88,13 +88,19 @@ export const Route = createFileRoute("/_authenticated/admin/academic-manager")({
 
 /* ---------------------------------------------------------------- Types */
 
+type ChapterStatus = "draft" | "published";
+
 type Chapter = {
   id: string;
   name: string;
   code: string;
   description: string;
+  status: ChapterStatus;
   createdAt: number;
   updatedAt: number;
+  mcqCount: number;
+  quizCount: number;
+  mockCount: number;
 };
 
 type Subject = {
@@ -124,13 +130,15 @@ type NodeRef =
   | { kind: "subject"; levelId: string; subjectId: string }
   | { kind: "chapter"; levelId: string; subjectId: string; chapterId: string };
 
+type EditorInitial = { name: string; code: string; description: string; status?: ChapterStatus };
+
 type EditorState =
   | { mode: "create"; kind: Kind; parent: NodeRef | null }
   | {
       mode: "edit";
       kind: Kind;
       target: NodeRef;
-      initial: { name: string; code: string; description: string };
+      initial: EditorInitial;
     }
   | null;
 
@@ -151,14 +159,19 @@ const uid = () => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   // RFC4122 v4 fallback
   const b = new Uint8Array(16);
-  (typeof crypto !== "undefined" ? crypto : { getRandomValues: (a: Uint8Array) => {
-    for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256);
-    return a;
-  } }).getRandomValues(b);
+  (typeof crypto !== "undefined"
+    ? crypto
+    : {
+        getRandomValues: (a: Uint8Array) => {
+          for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256);
+          return a;
+        },
+      }
+  ).getRandomValues(b);
   b[6] = (b[6] & 0x0f) | 0x40;
   b[8] = (b[8] & 0x3f) | 0x80;
   const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
-  return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 };
 
 function nodeKey(r: NodeRef) {
@@ -187,24 +200,7 @@ function timeAgo(ts: number) {
   return `${Math.floor(mo / 12)}y ago`;
 }
 
-function hash(s: string) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = (h * 16777619) >>> 0;
-  }
-  return h;
-}
-// Deterministic per-chapter metrics until backend wires up.
-function chapterMetrics(id: string) {
-  const h = hash(id);
-  return {
-    mcq: 12 + (h % 44),
-    quiz: 2 + ((h >> 3) % 9),
-    mock: 1 + ((h >> 7) % 4),
-    published: (h & 3) !== 0, // ~75% published
-  };
-}
+// Chapter metrics come exclusively from the DB tree — no derived values.
 
 function useCountUp(value: number, duration = 0.9) {
   const mv = useMotionValue(0);
@@ -304,45 +300,55 @@ function AcademicManagerPage() {
               name: c.name,
               code: c.code,
               description: c.description,
+              status: c.status,
             })),
           })),
         })),
       };
-      saveTree({ data: payload }).catch((err: unknown) => {
-        console.error("[academic-manager] save failed", err);
-        const msg = err instanceof Error ? err.message : String(err);
-        pushToast("error", `Save failed: ${msg}`);
-      });
+      saveTree({ data: payload })
+        .then((tree) => {
+          // Replace local state with the DB result so counts, timestamps
+          // and statuses match Supabase byte-for-byte. No derived values.
+          suppressSyncRef.current = true;
+          setLevels(tree as unknown as Level[]);
+          setTimeout(() => {
+            suppressSyncRef.current = false;
+          }, 0);
+        })
+        .catch((err: unknown) => {
+          console.error("[academic-manager] save failed", err);
+          const msg = err instanceof Error ? err.message : String(err);
+          pushToast("error", `Save failed: ${msg}`);
+        });
     }, 600);
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
   }, [levels, loading, saveTree]);
 
-  /* ---- Derived: totals ---- */
+  /* ---- Derived: totals (from DB tree only) ---- */
   const stats = useMemo(() => {
     let l = 0,
       s = 0,
       c = 0,
-      recent = 0,
+      published = 0,
+      draft = 0,
       latest = 0;
-    const cutoff = Date.now() - 7 * 86_400_000;
     for (const lvl of levels) {
       l++;
-      if (lvl.createdAt >= cutoff) recent++;
       latest = Math.max(latest, lvl.updatedAt);
       for (const sub of lvl.subjects) {
         s++;
-        if (sub.createdAt >= cutoff) recent++;
         latest = Math.max(latest, sub.updatedAt);
         for (const ch of sub.chapters) {
           c++;
-          if (ch.createdAt >= cutoff) recent++;
+          if (ch.status === "published") published++;
+          else draft++;
           latest = Math.max(latest, ch.updatedAt);
         }
       }
     }
-    return { l, s, c, recent, latest };
+    return { l, s, c, published, draft, latest };
   }, [levels]);
 
   /* ---- Active level / subject resolution ---- */
@@ -400,13 +406,19 @@ function AcademicManagerPage() {
   }, [activeSubject, q, filterKind, sortDir]);
 
   /* ---- Mutations ---- */
-  function saveNode(values: { name: string; code: string; description: string }) {
+  function saveNode(values: {
+    name: string;
+    code: string;
+    description: string;
+    status?: ChapterStatus;
+  }) {
     if (!editor) return;
     const clean = {
       name: values.name.trim().slice(0, 120),
       code: values.code.trim().slice(0, 32),
       description: values.description.trim().slice(0, 500),
     };
+    const nextStatus: ChapterStatus = values.status === "published" ? "published" : "draft";
     if (!clean.name) return;
     const stamp = Date.now();
 
@@ -443,7 +455,16 @@ function AcademicManagerPage() {
           pushToast("success", `Subject “${clean.name}” created.`);
         } else if (editor.kind === "chapter" && editor.parent?.kind === "subject") {
           const { levelId, subjectId } = editor.parent;
-          const nc: Chapter = { id: uid(), ...clean, createdAt: stamp, updatedAt: stamp };
+          const nc: Chapter = {
+            id: uid(),
+            ...clean,
+            status: nextStatus,
+            createdAt: stamp,
+            updatedAt: stamp,
+            mcqCount: 0,
+            quizCount: 0,
+            mockCount: 0,
+          };
           setLevels((prev) =>
             prev.map((l) =>
               l.id !== levelId
@@ -498,7 +519,9 @@ function AcademicManagerPage() {
                             ...s,
                             updatedAt: stamp,
                             chapters: s.chapters.map((c) =>
-                              c.id === t.chapterId ? { ...c, ...clean, updatedAt: stamp } : c,
+                              c.id === t.chapterId
+                                ? { ...c, ...clean, status: nextStatus, updatedAt: stamp }
+                                : c,
                             ),
                           },
                     ),
@@ -781,15 +804,15 @@ function AcademicManagerPage() {
         </div>
       </div>
 
-      {/* ================ Overview cards ================ */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {/* ================ Overview cards (all values from Supabase) ================ */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard
           index={0}
           loading={loading}
           icon={Layers}
           label="Total Levels"
           value={stats.l}
-          delta="+2 this quarter"
+          delta={`${stats.s} subjects`}
           tone="indigo"
         />
         <StatCard
@@ -798,7 +821,7 @@ function AcademicManagerPage() {
           icon={BookOpen}
           label="Total Subjects"
           value={stats.s}
-          delta="Across all levels"
+          delta={`${stats.c} chapters`}
           tone="cyan"
         />
         <StatCard
@@ -807,17 +830,28 @@ function AcademicManagerPage() {
           icon={FileText}
           label="Total Chapters"
           value={stats.c}
-          delta="Learning modules"
+          delta={stats.latest ? `Updated ${timeAgo(stats.latest)}` : "No changes yet"}
           tone="fuchsia"
         />
         <StatCard
           index={3}
           loading={loading}
-          icon={Sparkles}
-          label="Recently Added"
-          value={stats.recent}
-          delta={stats.latest ? `Latest ${timeAgo(stats.latest)}` : "Last 7 days"}
+          icon={CheckCircle2}
+          label="Published Chapters"
+          value={stats.published}
+          delta={
+            stats.c ? `${Math.round((stats.published / stats.c) * 100)}% of total` : "None yet"
+          }
           tone="amber"
+        />
+        <StatCard
+          index={4}
+          loading={loading}
+          icon={Pencil}
+          label="Draft Chapters"
+          value={stats.draft}
+          delta={stats.c ? `${Math.round((stats.draft / stats.c) * 100)}% of total` : "None yet"}
+          tone="indigo"
         />
       </div>
 
@@ -827,6 +861,8 @@ function AcademicManagerPage() {
         <SystemStatusCard
           totalSubjects={stats.s}
           totalChapters={stats.c}
+          published={stats.published}
+          draft={stats.draft}
           latest={stats.latest}
           loading={loading}
         />
@@ -851,7 +887,8 @@ function AcademicManagerPage() {
         }
         onDuplicate={(lvl) => duplicateNode({ kind: "level", levelId: lvl.id })}
         onDelete={(lvl) => {
-          const nested = lvl.subjects.length + lvl.subjects.reduce((n, s) => n + s.chapters.length, 0);
+          const nested =
+            lvl.subjects.length + lvl.subjects.reduce((n, s) => n + s.chapters.length, 0);
           setDel({
             kind: "single",
             target: { kind: "level", levelId: lvl.id },
@@ -1046,7 +1083,12 @@ function AcademicManagerPage() {
                 subjectId: activeSubject.id,
                 chapterId: ch.id,
               },
-              initial: { name: ch.name, code: ch.code, description: ch.description },
+              initial: {
+                name: ch.name,
+                code: ch.code,
+                description: ch.description,
+                status: ch.status,
+              },
             })
           }
           onDelete={(ch) =>
@@ -1309,15 +1351,18 @@ function DonutCard({
 function SystemStatusCard({
   totalSubjects,
   totalChapters,
+  published,
+  draft,
   latest,
   loading,
 }: {
   totalSubjects: number;
   totalChapters: number;
+  published: number;
+  draft: number;
   latest: number;
   loading: boolean;
 }) {
-  const health = Math.min(100, 65 + Math.round(Math.sqrt(totalChapters * 4)));
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -1336,9 +1381,9 @@ function SystemStatusCard({
           </span>
           <div>
             <div className="text-sm font-semibold tracking-tight text-foreground">
-              System status
+              Live workspace
             </div>
-            <div className="text-xs text-muted-foreground">Live workspace metrics</div>
+            <div className="text-xs text-muted-foreground">Straight from Supabase</div>
           </div>
           <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-success/25 bg-success/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-success">
             <span className="relative flex h-1.5 w-1.5">
@@ -1351,10 +1396,16 @@ function SystemStatusCard({
 
         <div className="mt-5 space-y-3.5">
           <StatusRow
-            icon={Activity}
-            label="Content health"
-            value={loading ? "—" : `${health}%`}
+            icon={CheckCircle2}
+            label="Published chapters"
+            value={loading ? "—" : String(published)}
             tone="success"
+          />
+          <StatusRow
+            icon={Pencil}
+            label="Draft chapters"
+            value={loading ? "—" : String(draft)}
+            tone="default"
           />
           <StatusRow
             icon={Timer}
@@ -1495,7 +1546,6 @@ function LevelPills({
   );
 }
 
-
 /* ---------------- Subjects Panel ---------------- */
 
 function SubjectsPanel({
@@ -1563,9 +1613,7 @@ function SubjectsPanel({
           <ul className="space-y-2">
             {subjects.map((sub, i) => {
               const active = sub.id === activeSubjectId;
-              const publishedCount = sub.chapters.filter(
-                (c) => chapterMetrics(c.id).published,
-              ).length;
+              const publishedCount = sub.chapters.filter((c) => c.status === "published").length;
               return (
                 <motion.li
                   key={sub.id}
@@ -1754,7 +1802,7 @@ function ChaptersPanel({
           <ul className="divide-y divide-border/50">
             <AnimatePresence initial={false}>
               {chapters.map((c, i) => {
-                const m = chapterMetrics(c.id);
+                const published = c.status === "published";
                 const isSelected = selected.has(c.id);
                 return (
                   <motion.li
@@ -1799,27 +1847,24 @@ function ChaptersPanel({
 
                       {/* Mobile inline metrics */}
                       <div className="mt-2 flex flex-wrap items-center gap-2 md:hidden">
-                        <MetricChip label="MCQ" value={m.mcq} tone="indigo" />
-                        <MetricChip label="Quiz" value={m.quiz} tone="cyan" />
-                        <MetricChip label="Mock" value={m.mock} tone="fuchsia" />
-                        <StatusPill
-                          active={m.published}
-                          label={m.published ? "Published" : "Draft"}
-                        />
+                        <MetricChip label="MCQ" value={c.mcqCount} tone="indigo" />
+                        <MetricChip label="Quiz" value={c.quizCount} tone="cyan" />
+                        <MetricChip label="Mock" value={c.mockCount} tone="fuchsia" />
+                        <StatusPill active={published} label={published ? "Published" : "Draft"} />
                       </div>
                     </div>
 
                     <div className="hidden text-right md:block">
-                      <MetricNum value={m.mcq} tone="indigo" />
+                      <MetricNum value={c.mcqCount} tone="indigo" />
                     </div>
                     <div className="hidden text-right md:block">
-                      <MetricNum value={m.quiz} tone="cyan" />
+                      <MetricNum value={c.quizCount} tone="cyan" />
                     </div>
                     <div className="hidden text-right md:block">
-                      <MetricNum value={m.mock} tone="fuchsia" />
+                      <MetricNum value={c.mockCount} tone="fuchsia" />
                     </div>
                     <div className="hidden justify-end md:flex">
-                      <StatusPill active={m.published} label={m.published ? "Live" : "Draft"} />
+                      <StatusPill active={published} label={published ? "Live" : "Draft"} />
                     </div>
                     <div className="hidden text-right text-[11px] text-muted-foreground md:block">
                       {timeAgo(c.updatedAt)}
@@ -2044,11 +2089,12 @@ function EditorDialog({
 }: {
   state: EditorState;
   onClose: () => void;
-  onSave: (v: { name: string; code: string; description: string }) => void;
+  onSave: (v: { name: string; code: string; description: string; status?: ChapterStatus }) => void;
 }) {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [description, setDescription] = useState("");
+  const [status, setStatus] = useState<ChapterStatus>("draft");
   const [nameError, setNameError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -2057,10 +2103,12 @@ function EditorDialog({
       setName(state.initial.name);
       setCode(state.initial.code);
       setDescription(state.initial.description);
+      setStatus(state.initial.status ?? "draft");
     } else {
       setName("");
       setCode("");
       setDescription("");
+      setStatus("draft");
     }
     setNameError(null);
   }, [state]);
@@ -2076,14 +2124,19 @@ function EditorDialog({
       ? "A level groups related subjects and chapters."
       : kind === "subject"
         ? "A subject belongs to a level and contains chapters."
-        : "A chapter belongs to a subject.";
+        : "A chapter belongs to a subject. New chapters start as Draft.";
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return setNameError("Name is required.");
     if (trimmed.length > 120) return setNameError("Must be 120 characters or fewer.");
-    onSave({ name: trimmed, code, description });
+    onSave({
+      name: trimmed,
+      code,
+      description,
+      status: kind === "chapter" ? status : undefined,
+    });
   }
 
   return (
@@ -2161,6 +2214,23 @@ function EditorDialog({
             />
             <p className="text-right text-[10px] text-muted-foreground">{description.length}/500</p>
           </div>
+          {kind === "chapter" && (
+            <div className="space-y-1.5">
+              <Label htmlFor="am-status">Status</Label>
+              <Select value={status} onValueChange={(v) => setStatus(v as ChapterStatus)}>
+                <SelectTrigger id="am-status" className="h-11 rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="published">Published (Live)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                Published chapters show as “Live”. This value is stored in Supabase.
+              </p>
+            </div>
+          )}
           <DialogFooter className="gap-2 sm:gap-2">
             <Button type="button" variant="outline" onClick={onClose} className="rounded-xl">
               Cancel
