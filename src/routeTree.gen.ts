@@ -9,38 +9,429 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SignupRouteImport } from './routes/signup'
+import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminLoginRouteImport } from './routes/admin.login'
+import { Route as AuthenticatedStudentRouteImport } from './routes/_authenticated.student'
+import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated.admin'
+import { Route as AuthenticatedStudentIndexRouteImport } from './routes/_authenticated.student.index'
+import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated.admin.index'
+import { Route as AuthenticatedStudentWrongAnswersRouteImport } from './routes/_authenticated.student.wrong-answers'
+import { Route as AuthenticatedStudentSettingsRouteImport } from './routes/_authenticated.student.settings'
+import { Route as AuthenticatedStudentRoutineTrackerRouteImport } from './routes/_authenticated.student.routine-tracker'
+import { Route as AuthenticatedStudentQnsBankPracticeRouteImport } from './routes/_authenticated.student.qns-bank-practice'
+import { Route as AuthenticatedStudentProgressTrackerRouteImport } from './routes/_authenticated.student.progress-tracker'
+import { Route as AuthenticatedStudentMcqPracticeRouteImport } from './routes/_authenticated.student.mcq-practice'
+import { Route as AuthenticatedStudentCustomExamRouteImport } from './routes/_authenticated.student.custom-exam'
+import { Route as AuthenticatedStudentBookmarksRouteImport } from './routes/_authenticated.student.bookmarks'
+import { Route as AuthenticatedAdminUserManagerRouteImport } from './routes/_authenticated.admin.user-manager'
+import { Route as AuthenticatedAdminSettingsRouteImport } from './routes/_authenticated.admin.settings'
+import { Route as AuthenticatedAdminRoutineManagerRouteImport } from './routes/_authenticated.admin.routine-manager'
+import { Route as AuthenticatedAdminQnsBankManagerRouteImport } from './routes/_authenticated.admin.qns-bank-manager'
+import { Route as AuthenticatedAdminMcqManagerRouteImport } from './routes/_authenticated.admin.mcq-manager'
+import { Route as AuthenticatedAdminAcademicManagerRouteImport } from './routes/_authenticated.admin.academic-manager'
+import { Route as AuthenticatedStudentQnsBankPracticeSessionRouteImport } from './routes/_authenticated.student_.qns-bank-practice.session'
+import { Route as AuthenticatedStudentMcqPracticeSessionRouteImport } from './routes/_authenticated.student_.mcq-practice.session'
+import { Route as AuthenticatedStudentCustomExamSessionRouteImport } from './routes/_authenticated.student_.custom-exam.session'
+import { Route as AuthenticatedAdminUserManagerUserIdRouteImport } from './routes/_authenticated.admin.user-manager.$userId'
 
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ResetPasswordRoute = ResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedRoute = AuthenticatedRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminLoginRoute = AdminLoginRouteImport.update({
+  id: '/admin/login',
+  path: '/admin/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedStudentRoute = AuthenticatedStudentRouteImport.update({
+  id: '/student',
+  path: '/student',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedStudentIndexRoute =
+  AuthenticatedStudentIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedStudentRoute,
+  } as any)
+const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthenticatedAdminRoute,
+} as any)
+const AuthenticatedStudentWrongAnswersRoute =
+  AuthenticatedStudentWrongAnswersRouteImport.update({
+    id: '/wrong-answers',
+    path: '/wrong-answers',
+    getParentRoute: () => AuthenticatedStudentRoute,
+  } as any)
+const AuthenticatedStudentSettingsRoute =
+  AuthenticatedStudentSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AuthenticatedStudentRoute,
+  } as any)
+const AuthenticatedStudentRoutineTrackerRoute =
+  AuthenticatedStudentRoutineTrackerRouteImport.update({
+    id: '/routine-tracker',
+    path: '/routine-tracker',
+    getParentRoute: () => AuthenticatedStudentRoute,
+  } as any)
+const AuthenticatedStudentQnsBankPracticeRoute =
+  AuthenticatedStudentQnsBankPracticeRouteImport.update({
+    id: '/qns-bank-practice',
+    path: '/qns-bank-practice',
+    getParentRoute: () => AuthenticatedStudentRoute,
+  } as any)
+const AuthenticatedStudentProgressTrackerRoute =
+  AuthenticatedStudentProgressTrackerRouteImport.update({
+    id: '/progress-tracker',
+    path: '/progress-tracker',
+    getParentRoute: () => AuthenticatedStudentRoute,
+  } as any)
+const AuthenticatedStudentMcqPracticeRoute =
+  AuthenticatedStudentMcqPracticeRouteImport.update({
+    id: '/mcq-practice',
+    path: '/mcq-practice',
+    getParentRoute: () => AuthenticatedStudentRoute,
+  } as any)
+const AuthenticatedStudentCustomExamRoute =
+  AuthenticatedStudentCustomExamRouteImport.update({
+    id: '/custom-exam',
+    path: '/custom-exam',
+    getParentRoute: () => AuthenticatedStudentRoute,
+  } as any)
+const AuthenticatedStudentBookmarksRoute =
+  AuthenticatedStudentBookmarksRouteImport.update({
+    id: '/bookmarks',
+    path: '/bookmarks',
+    getParentRoute: () => AuthenticatedStudentRoute,
+  } as any)
+const AuthenticatedAdminUserManagerRoute =
+  AuthenticatedAdminUserManagerRouteImport.update({
+    id: '/user-manager',
+    path: '/user-manager',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
+const AuthenticatedAdminSettingsRoute =
+  AuthenticatedAdminSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
+const AuthenticatedAdminRoutineManagerRoute =
+  AuthenticatedAdminRoutineManagerRouteImport.update({
+    id: '/routine-manager',
+    path: '/routine-manager',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
+const AuthenticatedAdminQnsBankManagerRoute =
+  AuthenticatedAdminQnsBankManagerRouteImport.update({
+    id: '/qns-bank-manager',
+    path: '/qns-bank-manager',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
+const AuthenticatedAdminMcqManagerRoute =
+  AuthenticatedAdminMcqManagerRouteImport.update({
+    id: '/mcq-manager',
+    path: '/mcq-manager',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
+const AuthenticatedAdminAcademicManagerRoute =
+  AuthenticatedAdminAcademicManagerRouteImport.update({
+    id: '/academic-manager',
+    path: '/academic-manager',
+    getParentRoute: () => AuthenticatedAdminRoute,
+  } as any)
+const AuthenticatedStudentQnsBankPracticeSessionRoute =
+  AuthenticatedStudentQnsBankPracticeSessionRouteImport.update({
+    id: '/student_/qns-bank-practice/session',
+    path: '/student/qns-bank-practice/session',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedStudentMcqPracticeSessionRoute =
+  AuthenticatedStudentMcqPracticeSessionRouteImport.update({
+    id: '/student_/mcq-practice/session',
+    path: '/student/mcq-practice/session',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedStudentCustomExamSessionRoute =
+  AuthenticatedStudentCustomExamSessionRouteImport.update({
+    id: '/student_/custom-exam/session',
+    path: '/student/custom-exam/session',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAdminUserManagerUserIdRoute =
+  AuthenticatedAdminUserManagerUserIdRouteImport.update({
+    id: '/$userId',
+    path: '/$userId',
+    getParentRoute: () => AuthenticatedAdminUserManagerRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/forgot-password': typeof ForgotPasswordRoute
+  '/login': typeof LoginRoute
+  '/reset-password': typeof ResetPasswordRoute
+  '/signup': typeof SignupRoute
+  '/admin': typeof AuthenticatedAdminRouteWithChildren
+  '/student': typeof AuthenticatedStudentRouteWithChildren
+  '/admin/login': typeof AdminLoginRoute
+  '/admin/academic-manager': typeof AuthenticatedAdminAcademicManagerRoute
+  '/admin/mcq-manager': typeof AuthenticatedAdminMcqManagerRoute
+  '/admin/qns-bank-manager': typeof AuthenticatedAdminQnsBankManagerRoute
+  '/admin/routine-manager': typeof AuthenticatedAdminRoutineManagerRoute
+  '/admin/settings': typeof AuthenticatedAdminSettingsRoute
+  '/admin/user-manager': typeof AuthenticatedAdminUserManagerRouteWithChildren
+  '/student/bookmarks': typeof AuthenticatedStudentBookmarksRoute
+  '/student/custom-exam': typeof AuthenticatedStudentCustomExamRoute
+  '/student/mcq-practice': typeof AuthenticatedStudentMcqPracticeRoute
+  '/student/progress-tracker': typeof AuthenticatedStudentProgressTrackerRoute
+  '/student/qns-bank-practice': typeof AuthenticatedStudentQnsBankPracticeRoute
+  '/student/routine-tracker': typeof AuthenticatedStudentRoutineTrackerRoute
+  '/student/settings': typeof AuthenticatedStudentSettingsRoute
+  '/student/wrong-answers': typeof AuthenticatedStudentWrongAnswersRoute
+  '/admin/': typeof AuthenticatedAdminIndexRoute
+  '/student/': typeof AuthenticatedStudentIndexRoute
+  '/admin/user-manager/$userId': typeof AuthenticatedAdminUserManagerUserIdRoute
+  '/student/custom-exam/session': typeof AuthenticatedStudentCustomExamSessionRoute
+  '/student/mcq-practice/session': typeof AuthenticatedStudentMcqPracticeSessionRoute
+  '/student/qns-bank-practice/session': typeof AuthenticatedStudentQnsBankPracticeSessionRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/forgot-password': typeof ForgotPasswordRoute
+  '/login': typeof LoginRoute
+  '/reset-password': typeof ResetPasswordRoute
+  '/signup': typeof SignupRoute
+  '/admin/login': typeof AdminLoginRoute
+  '/admin/academic-manager': typeof AuthenticatedAdminAcademicManagerRoute
+  '/admin/mcq-manager': typeof AuthenticatedAdminMcqManagerRoute
+  '/admin/qns-bank-manager': typeof AuthenticatedAdminQnsBankManagerRoute
+  '/admin/routine-manager': typeof AuthenticatedAdminRoutineManagerRoute
+  '/admin/settings': typeof AuthenticatedAdminSettingsRoute
+  '/admin/user-manager': typeof AuthenticatedAdminUserManagerRouteWithChildren
+  '/student/bookmarks': typeof AuthenticatedStudentBookmarksRoute
+  '/student/custom-exam': typeof AuthenticatedStudentCustomExamRoute
+  '/student/mcq-practice': typeof AuthenticatedStudentMcqPracticeRoute
+  '/student/progress-tracker': typeof AuthenticatedStudentProgressTrackerRoute
+  '/student/qns-bank-practice': typeof AuthenticatedStudentQnsBankPracticeRoute
+  '/student/routine-tracker': typeof AuthenticatedStudentRoutineTrackerRoute
+  '/student/settings': typeof AuthenticatedStudentSettingsRoute
+  '/student/wrong-answers': typeof AuthenticatedStudentWrongAnswersRoute
+  '/admin': typeof AuthenticatedAdminIndexRoute
+  '/student': typeof AuthenticatedStudentIndexRoute
+  '/admin/user-manager/$userId': typeof AuthenticatedAdminUserManagerUserIdRoute
+  '/student/custom-exam/session': typeof AuthenticatedStudentCustomExamSessionRoute
+  '/student/mcq-practice/session': typeof AuthenticatedStudentMcqPracticeSessionRoute
+  '/student/qns-bank-practice/session': typeof AuthenticatedStudentQnsBankPracticeSessionRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/forgot-password': typeof ForgotPasswordRoute
+  '/login': typeof LoginRoute
+  '/reset-password': typeof ResetPasswordRoute
+  '/signup': typeof SignupRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRouteWithChildren
+  '/_authenticated/student': typeof AuthenticatedStudentRouteWithChildren
+  '/admin/login': typeof AdminLoginRoute
+  '/_authenticated/admin/academic-manager': typeof AuthenticatedAdminAcademicManagerRoute
+  '/_authenticated/admin/mcq-manager': typeof AuthenticatedAdminMcqManagerRoute
+  '/_authenticated/admin/qns-bank-manager': typeof AuthenticatedAdminQnsBankManagerRoute
+  '/_authenticated/admin/routine-manager': typeof AuthenticatedAdminRoutineManagerRoute
+  '/_authenticated/admin/settings': typeof AuthenticatedAdminSettingsRoute
+  '/_authenticated/admin/user-manager': typeof AuthenticatedAdminUserManagerRouteWithChildren
+  '/_authenticated/student/bookmarks': typeof AuthenticatedStudentBookmarksRoute
+  '/_authenticated/student/custom-exam': typeof AuthenticatedStudentCustomExamRoute
+  '/_authenticated/student/mcq-practice': typeof AuthenticatedStudentMcqPracticeRoute
+  '/_authenticated/student/progress-tracker': typeof AuthenticatedStudentProgressTrackerRoute
+  '/_authenticated/student/qns-bank-practice': typeof AuthenticatedStudentQnsBankPracticeRoute
+  '/_authenticated/student/routine-tracker': typeof AuthenticatedStudentRoutineTrackerRoute
+  '/_authenticated/student/settings': typeof AuthenticatedStudentSettingsRoute
+  '/_authenticated/student/wrong-answers': typeof AuthenticatedStudentWrongAnswersRoute
+  '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
+  '/_authenticated/student/': typeof AuthenticatedStudentIndexRoute
+  '/_authenticated/admin/user-manager/$userId': typeof AuthenticatedAdminUserManagerUserIdRoute
+  '/_authenticated/student_/custom-exam/session': typeof AuthenticatedStudentCustomExamSessionRoute
+  '/_authenticated/student_/mcq-practice/session': typeof AuthenticatedStudentMcqPracticeSessionRoute
+  '/_authenticated/student_/qns-bank-practice/session': typeof AuthenticatedStudentQnsBankPracticeSessionRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/forgot-password'
+    | '/login'
+    | '/reset-password'
+    | '/signup'
+    | '/admin'
+    | '/student'
+    | '/admin/login'
+    | '/admin/academic-manager'
+    | '/admin/mcq-manager'
+    | '/admin/qns-bank-manager'
+    | '/admin/routine-manager'
+    | '/admin/settings'
+    | '/admin/user-manager'
+    | '/student/bookmarks'
+    | '/student/custom-exam'
+    | '/student/mcq-practice'
+    | '/student/progress-tracker'
+    | '/student/qns-bank-practice'
+    | '/student/routine-tracker'
+    | '/student/settings'
+    | '/student/wrong-answers'
+    | '/admin/'
+    | '/student/'
+    | '/admin/user-manager/$userId'
+    | '/student/custom-exam/session'
+    | '/student/mcq-practice/session'
+    | '/student/qns-bank-practice/session'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/forgot-password'
+    | '/login'
+    | '/reset-password'
+    | '/signup'
+    | '/admin/login'
+    | '/admin/academic-manager'
+    | '/admin/mcq-manager'
+    | '/admin/qns-bank-manager'
+    | '/admin/routine-manager'
+    | '/admin/settings'
+    | '/admin/user-manager'
+    | '/student/bookmarks'
+    | '/student/custom-exam'
+    | '/student/mcq-practice'
+    | '/student/progress-tracker'
+    | '/student/qns-bank-practice'
+    | '/student/routine-tracker'
+    | '/student/settings'
+    | '/student/wrong-answers'
+    | '/admin'
+    | '/student'
+    | '/admin/user-manager/$userId'
+    | '/student/custom-exam/session'
+    | '/student/mcq-practice/session'
+    | '/student/qns-bank-practice/session'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/forgot-password'
+    | '/login'
+    | '/reset-password'
+    | '/signup'
+    | '/_authenticated/admin'
+    | '/_authenticated/student'
+    | '/admin/login'
+    | '/_authenticated/admin/academic-manager'
+    | '/_authenticated/admin/mcq-manager'
+    | '/_authenticated/admin/qns-bank-manager'
+    | '/_authenticated/admin/routine-manager'
+    | '/_authenticated/admin/settings'
+    | '/_authenticated/admin/user-manager'
+    | '/_authenticated/student/bookmarks'
+    | '/_authenticated/student/custom-exam'
+    | '/_authenticated/student/mcq-practice'
+    | '/_authenticated/student/progress-tracker'
+    | '/_authenticated/student/qns-bank-practice'
+    | '/_authenticated/student/routine-tracker'
+    | '/_authenticated/student/settings'
+    | '/_authenticated/student/wrong-answers'
+    | '/_authenticated/admin/'
+    | '/_authenticated/student/'
+    | '/_authenticated/admin/user-manager/$userId'
+    | '/_authenticated/student_/custom-exam/session'
+    | '/_authenticated/student_/mcq-practice/session'
+    | '/_authenticated/student_/qns-bank-practice/session'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  ForgotPasswordRoute: typeof ForgotPasswordRoute
+  LoginRoute: typeof LoginRoute
+  ResetPasswordRoute: typeof ResetPasswordRoute
+  SignupRoute: typeof SignupRoute
+  AdminLoginRoute: typeof AdminLoginRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof ResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof ForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,22 +439,272 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/login': {
+      id: '/admin/login'
+      path: '/admin/login'
+      fullPath: '/admin/login'
+      preLoaderRoute: typeof AdminLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/student': {
+      id: '/_authenticated/student'
+      path: '/student'
+      fullPath: '/student'
+      preLoaderRoute: typeof AuthenticatedStudentRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/student/': {
+      id: '/_authenticated/student/'
+      path: '/'
+      fullPath: '/student/'
+      preLoaderRoute: typeof AuthenticatedStudentIndexRouteImport
+      parentRoute: typeof AuthenticatedStudentRoute
+    }
+    '/_authenticated/admin/': {
+      id: '/_authenticated/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
+    '/_authenticated/student/wrong-answers': {
+      id: '/_authenticated/student/wrong-answers'
+      path: '/wrong-answers'
+      fullPath: '/student/wrong-answers'
+      preLoaderRoute: typeof AuthenticatedStudentWrongAnswersRouteImport
+      parentRoute: typeof AuthenticatedStudentRoute
+    }
+    '/_authenticated/student/settings': {
+      id: '/_authenticated/student/settings'
+      path: '/settings'
+      fullPath: '/student/settings'
+      preLoaderRoute: typeof AuthenticatedStudentSettingsRouteImport
+      parentRoute: typeof AuthenticatedStudentRoute
+    }
+    '/_authenticated/student/routine-tracker': {
+      id: '/_authenticated/student/routine-tracker'
+      path: '/routine-tracker'
+      fullPath: '/student/routine-tracker'
+      preLoaderRoute: typeof AuthenticatedStudentRoutineTrackerRouteImport
+      parentRoute: typeof AuthenticatedStudentRoute
+    }
+    '/_authenticated/student/qns-bank-practice': {
+      id: '/_authenticated/student/qns-bank-practice'
+      path: '/qns-bank-practice'
+      fullPath: '/student/qns-bank-practice'
+      preLoaderRoute: typeof AuthenticatedStudentQnsBankPracticeRouteImport
+      parentRoute: typeof AuthenticatedStudentRoute
+    }
+    '/_authenticated/student/progress-tracker': {
+      id: '/_authenticated/student/progress-tracker'
+      path: '/progress-tracker'
+      fullPath: '/student/progress-tracker'
+      preLoaderRoute: typeof AuthenticatedStudentProgressTrackerRouteImport
+      parentRoute: typeof AuthenticatedStudentRoute
+    }
+    '/_authenticated/student/mcq-practice': {
+      id: '/_authenticated/student/mcq-practice'
+      path: '/mcq-practice'
+      fullPath: '/student/mcq-practice'
+      preLoaderRoute: typeof AuthenticatedStudentMcqPracticeRouteImport
+      parentRoute: typeof AuthenticatedStudentRoute
+    }
+    '/_authenticated/student/custom-exam': {
+      id: '/_authenticated/student/custom-exam'
+      path: '/custom-exam'
+      fullPath: '/student/custom-exam'
+      preLoaderRoute: typeof AuthenticatedStudentCustomExamRouteImport
+      parentRoute: typeof AuthenticatedStudentRoute
+    }
+    '/_authenticated/student/bookmarks': {
+      id: '/_authenticated/student/bookmarks'
+      path: '/bookmarks'
+      fullPath: '/student/bookmarks'
+      preLoaderRoute: typeof AuthenticatedStudentBookmarksRouteImport
+      parentRoute: typeof AuthenticatedStudentRoute
+    }
+    '/_authenticated/admin/user-manager': {
+      id: '/_authenticated/admin/user-manager'
+      path: '/user-manager'
+      fullPath: '/admin/user-manager'
+      preLoaderRoute: typeof AuthenticatedAdminUserManagerRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
+    '/_authenticated/admin/settings': {
+      id: '/_authenticated/admin/settings'
+      path: '/settings'
+      fullPath: '/admin/settings'
+      preLoaderRoute: typeof AuthenticatedAdminSettingsRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
+    '/_authenticated/admin/routine-manager': {
+      id: '/_authenticated/admin/routine-manager'
+      path: '/routine-manager'
+      fullPath: '/admin/routine-manager'
+      preLoaderRoute: typeof AuthenticatedAdminRoutineManagerRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
+    '/_authenticated/admin/qns-bank-manager': {
+      id: '/_authenticated/admin/qns-bank-manager'
+      path: '/qns-bank-manager'
+      fullPath: '/admin/qns-bank-manager'
+      preLoaderRoute: typeof AuthenticatedAdminQnsBankManagerRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
+    '/_authenticated/admin/mcq-manager': {
+      id: '/_authenticated/admin/mcq-manager'
+      path: '/mcq-manager'
+      fullPath: '/admin/mcq-manager'
+      preLoaderRoute: typeof AuthenticatedAdminMcqManagerRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
+    '/_authenticated/admin/academic-manager': {
+      id: '/_authenticated/admin/academic-manager'
+      path: '/academic-manager'
+      fullPath: '/admin/academic-manager'
+      preLoaderRoute: typeof AuthenticatedAdminAcademicManagerRouteImport
+      parentRoute: typeof AuthenticatedAdminRoute
+    }
+    '/_authenticated/student_/qns-bank-practice/session': {
+      id: '/_authenticated/student_/qns-bank-practice/session'
+      path: '/student/qns-bank-practice/session'
+      fullPath: '/student/qns-bank-practice/session'
+      preLoaderRoute: typeof AuthenticatedStudentQnsBankPracticeSessionRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/student_/mcq-practice/session': {
+      id: '/_authenticated/student_/mcq-practice/session'
+      path: '/student/mcq-practice/session'
+      fullPath: '/student/mcq-practice/session'
+      preLoaderRoute: typeof AuthenticatedStudentMcqPracticeSessionRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/student_/custom-exam/session': {
+      id: '/_authenticated/student_/custom-exam/session'
+      path: '/student/custom-exam/session'
+      fullPath: '/student/custom-exam/session'
+      preLoaderRoute: typeof AuthenticatedStudentCustomExamSessionRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/admin/user-manager/$userId': {
+      id: '/_authenticated/admin/user-manager/$userId'
+      path: '/$userId'
+      fullPath: '/admin/user-manager/$userId'
+      preLoaderRoute: typeof AuthenticatedAdminUserManagerUserIdRouteImport
+      parentRoute: typeof AuthenticatedAdminUserManagerRoute
+    }
   }
 }
 
+interface AuthenticatedAdminUserManagerRouteChildren {
+  AuthenticatedAdminUserManagerUserIdRoute: typeof AuthenticatedAdminUserManagerUserIdRoute
+}
+
+const AuthenticatedAdminUserManagerRouteChildren: AuthenticatedAdminUserManagerRouteChildren =
+  {
+    AuthenticatedAdminUserManagerUserIdRoute:
+      AuthenticatedAdminUserManagerUserIdRoute,
+  }
+
+const AuthenticatedAdminUserManagerRouteWithChildren =
+  AuthenticatedAdminUserManagerRoute._addFileChildren(
+    AuthenticatedAdminUserManagerRouteChildren,
+  )
+
+interface AuthenticatedAdminRouteChildren {
+  AuthenticatedAdminAcademicManagerRoute: typeof AuthenticatedAdminAcademicManagerRoute
+  AuthenticatedAdminMcqManagerRoute: typeof AuthenticatedAdminMcqManagerRoute
+  AuthenticatedAdminQnsBankManagerRoute: typeof AuthenticatedAdminQnsBankManagerRoute
+  AuthenticatedAdminRoutineManagerRoute: typeof AuthenticatedAdminRoutineManagerRoute
+  AuthenticatedAdminSettingsRoute: typeof AuthenticatedAdminSettingsRoute
+  AuthenticatedAdminUserManagerRoute: typeof AuthenticatedAdminUserManagerRouteWithChildren
+  AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
+}
+
+const AuthenticatedAdminRouteChildren: AuthenticatedAdminRouteChildren = {
+  AuthenticatedAdminAcademicManagerRoute:
+    AuthenticatedAdminAcademicManagerRoute,
+  AuthenticatedAdminMcqManagerRoute: AuthenticatedAdminMcqManagerRoute,
+  AuthenticatedAdminQnsBankManagerRoute: AuthenticatedAdminQnsBankManagerRoute,
+  AuthenticatedAdminRoutineManagerRoute: AuthenticatedAdminRoutineManagerRoute,
+  AuthenticatedAdminSettingsRoute: AuthenticatedAdminSettingsRoute,
+  AuthenticatedAdminUserManagerRoute:
+    AuthenticatedAdminUserManagerRouteWithChildren,
+  AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
+}
+
+const AuthenticatedAdminRouteWithChildren =
+  AuthenticatedAdminRoute._addFileChildren(AuthenticatedAdminRouteChildren)
+
+interface AuthenticatedStudentRouteChildren {
+  AuthenticatedStudentBookmarksRoute: typeof AuthenticatedStudentBookmarksRoute
+  AuthenticatedStudentCustomExamRoute: typeof AuthenticatedStudentCustomExamRoute
+  AuthenticatedStudentMcqPracticeRoute: typeof AuthenticatedStudentMcqPracticeRoute
+  AuthenticatedStudentProgressTrackerRoute: typeof AuthenticatedStudentProgressTrackerRoute
+  AuthenticatedStudentQnsBankPracticeRoute: typeof AuthenticatedStudentQnsBankPracticeRoute
+  AuthenticatedStudentRoutineTrackerRoute: typeof AuthenticatedStudentRoutineTrackerRoute
+  AuthenticatedStudentSettingsRoute: typeof AuthenticatedStudentSettingsRoute
+  AuthenticatedStudentWrongAnswersRoute: typeof AuthenticatedStudentWrongAnswersRoute
+  AuthenticatedStudentIndexRoute: typeof AuthenticatedStudentIndexRoute
+}
+
+const AuthenticatedStudentRouteChildren: AuthenticatedStudentRouteChildren = {
+  AuthenticatedStudentBookmarksRoute: AuthenticatedStudentBookmarksRoute,
+  AuthenticatedStudentCustomExamRoute: AuthenticatedStudentCustomExamRoute,
+  AuthenticatedStudentMcqPracticeRoute: AuthenticatedStudentMcqPracticeRoute,
+  AuthenticatedStudentProgressTrackerRoute:
+    AuthenticatedStudentProgressTrackerRoute,
+  AuthenticatedStudentQnsBankPracticeRoute:
+    AuthenticatedStudentQnsBankPracticeRoute,
+  AuthenticatedStudentRoutineTrackerRoute:
+    AuthenticatedStudentRoutineTrackerRoute,
+  AuthenticatedStudentSettingsRoute: AuthenticatedStudentSettingsRoute,
+  AuthenticatedStudentWrongAnswersRoute: AuthenticatedStudentWrongAnswersRoute,
+  AuthenticatedStudentIndexRoute: AuthenticatedStudentIndexRoute,
+}
+
+const AuthenticatedStudentRouteWithChildren =
+  AuthenticatedStudentRoute._addFileChildren(AuthenticatedStudentRouteChildren)
+
+interface AuthenticatedRouteChildren {
+  AuthenticatedAdminRoute: typeof AuthenticatedAdminRouteWithChildren
+  AuthenticatedStudentRoute: typeof AuthenticatedStudentRouteWithChildren
+  AuthenticatedStudentCustomExamSessionRoute: typeof AuthenticatedStudentCustomExamSessionRoute
+  AuthenticatedStudentMcqPracticeSessionRoute: typeof AuthenticatedStudentMcqPracticeSessionRoute
+  AuthenticatedStudentQnsBankPracticeSessionRoute: typeof AuthenticatedStudentQnsBankPracticeSessionRoute
+}
+
+const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedAdminRoute: AuthenticatedAdminRouteWithChildren,
+  AuthenticatedStudentRoute: AuthenticatedStudentRouteWithChildren,
+  AuthenticatedStudentCustomExamSessionRoute:
+    AuthenticatedStudentCustomExamSessionRoute,
+  AuthenticatedStudentMcqPracticeSessionRoute:
+    AuthenticatedStudentMcqPracticeSessionRoute,
+  AuthenticatedStudentQnsBankPracticeSessionRoute:
+    AuthenticatedStudentQnsBankPracticeSessionRoute,
+}
+
+const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
+  AuthenticatedRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  ForgotPasswordRoute: ForgotPasswordRoute,
+  LoginRoute: LoginRoute,
+  ResetPasswordRoute: ResetPasswordRoute,
+  SignupRoute: SignupRoute,
+  AdminLoginRoute: AdminLoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
