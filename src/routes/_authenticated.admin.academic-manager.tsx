@@ -401,13 +401,19 @@ function AcademicManagerPage() {
   }, [activeSubject, q, filterKind, sortDir]);
 
   /* ---- Mutations ---- */
-  function saveNode(values: { name: string; code: string; description: string }) {
+  function saveNode(values: {
+    name: string;
+    code: string;
+    description: string;
+    status?: ChapterStatus;
+  }) {
     if (!editor) return;
     const clean = {
       name: values.name.trim().slice(0, 120),
       code: values.code.trim().slice(0, 32),
       description: values.description.trim().slice(0, 500),
     };
+    const nextStatus: ChapterStatus = values.status === "published" ? "published" : "draft";
     if (!clean.name) return;
     const stamp = Date.now();
 
@@ -447,7 +453,7 @@ function AcademicManagerPage() {
           const nc: Chapter = {
             id: uid(),
             ...clean,
-            status: "draft",
+            status: nextStatus,
             createdAt: stamp,
             updatedAt: stamp,
             mcqCount: 0,
