@@ -1067,7 +1067,7 @@ function AcademicManagerPage() {
                 subjectId: activeSubject.id,
                 chapterId: ch.id,
               },
-              initial: { name: ch.name, code: ch.code, description: ch.description },
+              initial: { name: ch.name, code: ch.code, description: ch.description, status: ch.status },
             })
           }
           onDelete={(ch) =>
