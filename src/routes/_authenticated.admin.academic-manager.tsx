@@ -514,7 +514,9 @@ function AcademicManagerPage() {
                             ...s,
                             updatedAt: stamp,
                             chapters: s.chapters.map((c) =>
-                              c.id === t.chapterId ? { ...c, ...clean, updatedAt: stamp } : c,
+                              c.id === t.chapterId
+                                ? { ...c, ...clean, status: nextStatus, updatedAt: stamp }
+                                : c,
                             ),
                           },
                     ),
