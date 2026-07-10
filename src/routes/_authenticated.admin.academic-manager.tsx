@@ -780,15 +780,15 @@ function AcademicManagerPage() {
         </div>
       </div>
 
-      {/* ================ Overview cards ================ */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {/* ================ Overview cards (all values from Supabase) ================ */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard
           index={0}
           loading={loading}
           icon={Layers}
           label="Total Levels"
           value={stats.l}
-          delta="+2 this quarter"
+          delta={`${stats.s} subjects`}
           tone="indigo"
         />
         <StatCard
@@ -797,7 +797,7 @@ function AcademicManagerPage() {
           icon={BookOpen}
           label="Total Subjects"
           value={stats.s}
-          delta="Across all levels"
+          delta={`${stats.c} chapters`}
           tone="cyan"
         />
         <StatCard
@@ -806,17 +806,26 @@ function AcademicManagerPage() {
           icon={FileText}
           label="Total Chapters"
           value={stats.c}
-          delta="Learning modules"
+          delta={stats.latest ? `Updated ${timeAgo(stats.latest)}` : "No changes yet"}
           tone="fuchsia"
         />
         <StatCard
           index={3}
           loading={loading}
-          icon={Sparkles}
-          label="Recently Added"
-          value={stats.recent}
-          delta={stats.latest ? `Latest ${timeAgo(stats.latest)}` : "Last 7 days"}
+          icon={CheckCircle2}
+          label="Published Chapters"
+          value={stats.published}
+          delta={stats.c ? `${Math.round((stats.published / stats.c) * 100)}% of total` : "None yet"}
           tone="amber"
+        />
+        <StatCard
+          index={4}
+          loading={loading}
+          icon={Pencil}
+          label="Draft Chapters"
+          value={stats.draft}
+          delta={stats.c ? `${Math.round((stats.draft / stats.c) * 100)}% of total` : "None yet"}
+          tone="indigo"
         />
       </div>
 
@@ -826,6 +835,8 @@ function AcademicManagerPage() {
         <SystemStatusCard
           totalSubjects={stats.s}
           totalChapters={stats.c}
+          published={stats.published}
+          draft={stats.draft}
           latest={stats.latest}
           loading={loading}
         />
