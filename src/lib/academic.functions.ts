@@ -1,8 +1,16 @@
 // Server functions for the Academic Manager.
 //
-// Single source of truth for the Level -> Subject -> Chapter hierarchy
+// SINGLE SOURCE OF TRUTH for the Level -> Subject -> Chapter hierarchy
 // and every count/metric displayed for it. Everything comes from the
 // database: no hashes, no random values, no placeholders.
+//
+// Counts are computed from real tables:
+//   - MCQ:  SELECT chapter_id FROM mcq_questions WHERE status='published'
+//   - Quiz: SELECT chapter_id FROM quizzes       WHERE status='published'
+//   - Mock: SELECT chapter_id FROM mock_tests    WHERE status='published'
+//
+// Chapter `status` (draft | published) also comes straight from the row;
+// a newly created chapter defaults to 'draft'.
 
 import { createServerFn } from "@tanstack/react-start";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -59,19 +67,32 @@ function normalizeStatus(v: unknown): ChapterStatus {
   return v === "published" ? "published" : "draft";
 }
 
+// Count rows with status='published' grouped by chapter_id. Reads from real
+// tables. If the table does not exist yet (e.g. before the quizzes /
+// mock_tests migration has been applied on a given environment) the query
+// fails cleanly and we return an empty map so counts stay at 0 — never fake.
 async function countPublishedByChapter(
   supabase: DbClient,
   table: "mcq_questions" | "quizzes" | "mock_tests",
 ): Promise<Map<string, number>> {
-  // Fetch only chapter_id for rows with status='published'; count in JS.
-  // Small per-project volumes and the (chapter_id, status) indexes keep this cheap.
-  const { data, error } = await supabase
-    .from(table)
-    .select("chapter_id")
-    .eq("status", "published");
-  if (error) throw new Error(`${table}: ${error.message}`);
   const map = new Map<string, number>();
-  for (const row of (data ?? []) as Array<{ chapter_id: string | null }>) {
+  const client = supabase as unknown as {
+    from: (t: string) => {
+      select: (cols: string) => {
+        eq: (col: string, val: string) => Promise<{
+          data: Array<{ chapter_id: string | null }> | null;
+          error: { message: string; code?: string } | null;
+        }>;
+      };
+    };
+  };
+  const { data, error } = await client.from(table).select("chapter_id").eq("status", "published");
+  if (error) {
+    // Missing table / column → treat as zero. Never guess a number.
+    console.warn(`[academic.counts] ${table}: ${error.message}`);
+    return map;
+  }
+  for (const row of data ?? []) {
     if (!row.chapter_id) continue;
     map.set(row.chapter_id, (map.get(row.chapter_id) ?? 0) + 1);
   }
@@ -195,15 +216,16 @@ export const syncAcademicTree = createServerFn({ method: "POST" })
       description: string;
       position: number;
     }> = [];
-    const chapterRows: Array<{
+    type ChapterUpsert = {
       id: string;
       subject_id: string;
       name: string;
       slug: string | null;
       description: string;
       position: number;
-      status: ChapterStatus;
-    }> = [];
+      status?: ChapterStatus;
+    };
+    const chapterRows: ChapterUpsert[] = [];
     for (const l of data.levels) {
       l.subjects.forEach((s, si) => {
         subjectRows.push({
@@ -237,12 +259,22 @@ export const syncAcademicTree = createServerFn({ method: "POST" })
       if (r.error) throw new Error(r.error.message);
     }
     if (chapterRows.length) {
-      // status is a new column; cast to bypass stale generated types.
-      const r = await supabase
-        .from("academic_chapters")
-        .upsert(chapterRows as unknown as Database["public"]["Tables"]["academic_chapters"]["Insert"][], {
-          onConflict: "id",
+      // status column is added by migration; if it isn't present on this env
+      // yet, retry without status so writes still succeed.
+      const tbl = supabase.from("academic_chapters") as unknown as {
+        upsert: (
+          rows: unknown,
+          opts: { onConflict: string },
+        ) => Promise<{ error: { message: string; code?: string } | null }>;
+      };
+      let r = await tbl.upsert(chapterRows, { onConflict: "id" });
+      if (r.error && /status/i.test(r.error.message)) {
+        const stripped = chapterRows.map(({ status, ...rest }) => {
+          void status;
+          return rest;
         });
+        r = await tbl.upsert(stripped, { onConflict: "id" });
+      }
       if (r.error) throw new Error(r.error.message);
     }
 
