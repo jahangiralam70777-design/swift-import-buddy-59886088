@@ -11,6 +11,8 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { supabase } from "@/integrations/supabase/client";
+import { initAuth } from "@/lib/auth";
 
 function NotFoundComponent() {
   return (
@@ -77,14 +79,20 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "CL Aspire — Bangladesh's Premium Platform for ICAB CA Students" },
+      {
+        name: "description",
+        content:
+          "CL Aspire is Bangladesh's premium MCQ practice, mock examination and performance analytics platform for ICAB Certificate, Professional and Advanced Level CA students.",
+      },
+      { property: "og:title", content: "CL Aspire — ICAB CA Practice Platform for Bangladesh" },
+      {
+        property: "og:description",
+        content:
+          "Chapter-wise MCQ practice, timed quizzes, mock examinations and performance analytics — engineered for Bangladesh CA students preparing for ICAB examinations.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
       {
@@ -92,6 +100,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: appCss,
       },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap",
+      },
+    ],
+    scripts: [
+      {
+        children: `(function(){try{var s=localStorage.getItem('cla:theme:v1');var m=window.matchMedia('(prefers-color-scheme: dark)').matches;var dark=s==='dark'||((s==='system'||!s)&&m);var r=document.documentElement;if(dark){r.classList.add('dark');}r.style.colorScheme=dark?'dark':'light';}catch(e){}})();`,
+      },
     ],
   }),
   shellComponent: RootShell,
@@ -116,6 +135,24 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const router = useRouter();
+
+  // Boot auth + subscribe to identity transitions once at the root.
+  useEffect(() => {
+    initAuth();
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") {
+        return;
+      }
+      router.invalidate();
+      if (event !== "SIGNED_OUT") {
+        queryClient.invalidateQueries();
+      }
+    });
+    return () => {
+      sub.subscription.unsubscribe();
+    };
+  }, [router, queryClient]);
 
   return (
     <QueryClientProvider client={queryClient}>

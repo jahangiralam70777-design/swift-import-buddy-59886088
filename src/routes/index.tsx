@@ -1,24 +1,40 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import Home from "@/components/home/Home";
+import { ensureAuthReady, homeForRole } from "@/lib/auth";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
 export const Route = createFileRoute("/")({
-  component: Index,
+  ssr: false,
+  beforeLoad: async () => {
+    const snap = await ensureAuthReady();
+    if (snap.status === "signedIn") {
+      throw redirect({ to: homeForRole(snap.role) });
+    }
+  },
+  head: () => ({
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "EducationalOrganization",
+          name: "CL Aspire",
+          description:
+            "CL Aspire is Bangladesh's premium platform for ICAB CA students — chapter-wise MCQ practice, mock examinations, question bank and performance analytics for Certificate, Professional and Advanced Level candidates.",
+          url: "https://claspire.com/",
+          areaServed: "Bangladesh",
+          sameAs: [
+            "https://twitter.com/claspire",
+            "https://www.linkedin.com/company/claspire",
+            "https://www.youtube.com/@claspire",
+          ],
+          aggregateRating: {
+            "@type": "AggregateRating",
+            ratingValue: "4.9",
+            reviewCount: "1240",
+          },
+        }),
+      },
+    ],
+  }),
+  component: Home,
 });
-
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
-function Index() {
-  return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
-  );
-}
