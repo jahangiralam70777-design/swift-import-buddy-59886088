@@ -232,7 +232,7 @@ function AcademicManagerPage() {
     refetchOnWindowFocus: true,
   });
   const levels = useMemo(() => (treeQuery.data ?? []) as Level[], [treeQuery.data]);
-  const loading = treeQuery.isLoading || treeQuery.isFetching;
+  const baseLoading = treeQuery.isLoading || treeQuery.isFetching;
 
   /* ---- Toast helper ---- */
   const pushToast = (tone: ToastTone, message: string) => {
@@ -378,6 +378,7 @@ function AcademicManagerPage() {
     createChapterMut.isPending ||
     updateChapterMut.isPending ||
     deleteChapterMut.isPending;
+  const loading = baseLoading || busy;
 
   /* ---- Derived: totals (from DB tree only) ---- */
   const stats = useMemo(() => {
@@ -571,38 +572,16 @@ function AcademicManagerPage() {
               </h2>
               <p className="mt-1.5 max-w-xl text-sm text-muted-foreground">
                 Curate the <span className="text-foreground">Level → Subject → Chapter</span>{" "}
-                hierarchy. Changes autosave locally.
+                hierarchy. Every change is saved to the database.
               </p>
             </div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <input
-            ref={importRef}
-            type="file"
-            accept="application/json,.json"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) onImportFile(f);
-              e.target.value = "";
-            }}
-          />
-          <Button
-            variant="outline"
-            className="h-10 gap-1.5 rounded-xl"
-            onClick={() => importRef.current?.click()}
-          >
-            <Upload className="h-4 w-4" />
-            Import
-          </Button>
-          <Button variant="outline" className="h-10 gap-1.5 rounded-xl" onClick={onExport}>
-            <Download className="h-4 w-4" />
-            Export
-          </Button>
           <Button
             className="h-10 gap-1.5 rounded-xl bg-gradient-to-r from-primary via-primary to-accent px-4 shadow-[0_10px_28px_-10px_color-mix(in_oklab,var(--primary)_65%,transparent)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_-10px_color-mix(in_oklab,var(--primary)_70%,transparent)]"
+            disabled={busy}
             onClick={() => setEditor({ mode: "create", kind: "level", parent: null })}
           >
             <Plus className="h-4 w-4" />
@@ -692,7 +671,6 @@ function AcademicManagerPage() {
             initial: { name: lvl.name, code: lvl.code, description: lvl.description },
           })
         }
-        onDuplicate={(lvl) => duplicateNode({ kind: "level", levelId: lvl.id })}
         onDelete={(lvl) => {
           const nested =
             lvl.subjects.length + lvl.subjects.reduce((n, s) => n + s.chapters.length, 0);
@@ -854,10 +832,6 @@ function AcademicManagerPage() {
               nested: sub.chapters.length,
             })
           }
-          onDuplicate={(sub) =>
-            activeLevel &&
-            duplicateNode({ kind: "subject", levelId: activeLevel.id, subjectId: sub.id })
-          }
         />
 
         <ChaptersPanel
@@ -913,16 +887,6 @@ function AcademicManagerPage() {
               nested: 0,
             })
           }
-          onDuplicate={(ch) =>
-            activeLevel &&
-            activeSubject &&
-            duplicateNode({
-              kind: "chapter",
-              levelId: activeLevel.id,
-              subjectId: activeSubject.id,
-              chapterId: ch.id,
-            })
-          }
         />
       </div>
 
@@ -933,9 +897,8 @@ function AcademicManagerPage() {
         onClose={() => setDel(null)}
         onConfirm={() => {
           if (!del) return;
-          if (del.kind === "single") removeRefs([del.target]);
-          else removeRefs(del.refs);
-          setDel(null);
+          if (del.kind === "single") deleteRefs([del.target]);
+          else deleteRefs(del.refs);
         }}
       />
       <ToastStack toasts={toasts} />
