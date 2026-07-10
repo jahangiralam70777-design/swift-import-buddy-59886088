@@ -88,13 +88,19 @@ export const Route = createFileRoute("/_authenticated/admin/academic-manager")({
 
 /* ---------------------------------------------------------------- Types */
 
+type ChapterStatus = "draft" | "published";
+
 type Chapter = {
   id: string;
   name: string;
   code: string;
   description: string;
+  status: ChapterStatus;
   createdAt: number;
   updatedAt: number;
+  mcqCount: number;
+  quizCount: number;
+  mockCount: number;
 };
 
 type Subject = {
@@ -124,13 +130,15 @@ type NodeRef =
   | { kind: "subject"; levelId: string; subjectId: string }
   | { kind: "chapter"; levelId: string; subjectId: string; chapterId: string };
 
+type EditorInitial = { name: string; code: string; description: string; status?: ChapterStatus };
+
 type EditorState =
   | { mode: "create"; kind: Kind; parent: NodeRef | null }
   | {
       mode: "edit";
       kind: Kind;
       target: NodeRef;
-      initial: { name: string; code: string; description: string };
+      initial: EditorInitial;
     }
   | null;
 
@@ -187,24 +195,7 @@ function timeAgo(ts: number) {
   return `${Math.floor(mo / 12)}y ago`;
 }
 
-function hash(s: string) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = (h * 16777619) >>> 0;
-  }
-  return h;
-}
-// Deterministic per-chapter metrics until backend wires up.
-function chapterMetrics(id: string) {
-  const h = hash(id);
-  return {
-    mcq: 12 + (h % 44),
-    quiz: 2 + ((h >> 3) % 9),
-    mock: 1 + ((h >> 7) % 4),
-    published: (h & 3) !== 0, // ~75% published
-  };
-}
+// Chapter metrics come exclusively from the DB tree — no derived values.
 
 function useCountUp(value: number, duration = 0.9) {
   const mv = useMotionValue(0);
