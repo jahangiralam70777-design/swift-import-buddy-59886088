@@ -108,7 +108,20 @@ async function countPublishedByChapter(
   };
   const { data, error } = await client.from(table).select("chapter_id").eq("status", "published");
   if (error) {
-    throw new Error(error.message);
+    const code = error.code ?? "";
+    const msg = error.message ?? "";
+    // Table missing / not in schema cache — treat as zero, do not block Academic Manager
+    if (
+      code === "42P01" ||
+      code === "PGRST205" ||
+      code === "PGRST202" ||
+      /does not exist/i.test(msg) ||
+      /Could not find the table/i.test(msg) ||
+      /schema cache/i.test(msg)
+    ) {
+      return map;
+    }
+    throw new Error(msg);
   }
   for (const row of data ?? []) {
     if (!row.chapter_id) continue;
@@ -116,6 +129,7 @@ async function countPublishedByChapter(
   }
   return map;
 }
+
 
 async function loadTree(supabase: DbClient): Promise<ApiLevel[]> {
   const [levelsRes, subjectsRes, chaptersRes, mcqCounts, quizCounts, mockCounts] =
