@@ -1,7 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getAcademicTree, syncAcademicTree } from "@/lib/academic.functions";
+import {
+  createAcademicChapter,
+  createAcademicLevel,
+  createAcademicSubject,
+  deleteAcademicChapter,
+  deleteAcademicLevel,
+  deleteAcademicSubject,
+  getAcademicTree,
+  updateAcademicChapter,
+  updateAcademicLevel,
+  updateAcademicSubject,
+  type AcademicMutationResult,
+} from "@/lib/academic.functions";
 import {
   AnimatePresence,
   motion,
@@ -14,8 +27,6 @@ import {
   BookOpen,
   CheckCircle2,
   ChevronRight,
-  Copy,
-  Download,
   FileText,
   Filter,
   GraduationCap,
@@ -30,7 +41,6 @@ import {
   Timer,
   Trash2,
   TriangleAlert,
-  Upload,
   X,
   ArrowUpRight,
   GripVertical,
@@ -150,35 +160,7 @@ type DeleteState =
 type ToastTone = "success" | "error" | "info";
 type Toast = { id: string; tone: ToastTone; message: string };
 
-/* ---------------------------------------------------------------- Seed */
-
 /* ---------------------------------------------------------------- Utils */
-
-// Must be a valid UUID — Supabase columns are `uuid` typed and reject anything else.
-const uid = () => {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
-  // RFC4122 v4 fallback
-  const b = new Uint8Array(16);
-  (typeof crypto !== "undefined"
-    ? crypto
-    : {
-        getRandomValues: (a: Uint8Array) => {
-          for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256);
-          return a;
-        },
-      }
-  ).getRandomValues(b);
-  b[6] = (b[6] & 0x0f) | 0x40;
-  b[8] = (b[8] & 0x3f) | 0x80;
-  const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
-};
-
-function nodeKey(r: NodeRef) {
-  if (r.kind === "level") return `L:${r.levelId}`;
-  if (r.kind === "subject") return `S:${r.levelId}:${r.subjectId}`;
-  return `C:${r.levelId}:${r.subjectId}:${r.chapterId}`;
-}
 
 const KIND_LABEL: Record<Kind, string> = {
   level: "Level",
@@ -221,7 +203,7 @@ function useCountUp(value: number, duration = 0.9) {
 /* ---------------------------------------------------------------- Page */
 
 function AcademicManagerPage() {
-  const [levels, setLevels] = useState<Level[]>([]);
+  const qc = useQueryClient();
   const [activeLevelId, setActiveLevelId] = useState<string>("");
   const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
   const [selectedChapters, setSelectedChapters] = useState<Set<string>>(new Set());
@@ -231,100 +213,172 @@ function AcademicManagerPage() {
   const [editor, setEditor] = useState<EditorState>(null);
   const [del, setDel] = useState<DeleteState>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [loading, setLoading] = useState(true);
-  const importRef = useRef<HTMLInputElement>(null);
 
   const fetchTree = useServerFn(getAcademicTree);
-  const saveTree = useServerFn(syncAcademicTree);
-  const suppressSyncRef = useRef(true);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const createLevelFn = useServerFn(createAcademicLevel);
+  const updateLevelFn = useServerFn(updateAcademicLevel);
+  const deleteLevelFn = useServerFn(deleteAcademicLevel);
+  const createSubjectFn = useServerFn(createAcademicSubject);
+  const updateSubjectFn = useServerFn(updateAcademicSubject);
+  const deleteSubjectFn = useServerFn(deleteAcademicSubject);
+  const createChapterFn = useServerFn(createAcademicChapter);
+  const updateChapterFn = useServerFn(updateAcademicChapter);
+  const deleteChapterFn = useServerFn(deleteAcademicChapter);
+
+  const treeQuery = useQuery({
+    queryKey: ["academic-tree"],
+    queryFn: () => fetchTree(),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+  const levels = useMemo(() => (treeQuery.data ?? []) as Level[], [treeQuery.data]);
+  const baseLoading = treeQuery.isLoading || treeQuery.isFetching;
 
   /* ---- Toast helper ---- */
   const pushToast = (tone: ToastTone, message: string) => {
-    const id = uid();
+    const id = `${performance.now()}`;
     setToasts((t) => [...t, { id, tone, message }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200);
   };
 
-  /* ---- Load from cloud ---- */
-  useEffect(() => {
-    let cancelled = false;
-    suppressSyncRef.current = true;
-    fetchTree()
-      .then((tree) => {
-        if (cancelled) return;
-        const asLevels = tree as unknown as Level[];
-        setLevels(asLevels);
-        if (asLevels[0]) {
-          setActiveLevelId(asLevels[0].id);
-          setActiveSubjectId(asLevels[0].subjects[0]?.id ?? null);
-        }
-      })
-      .catch((err) => {
-        console.error("[academic-manager] load failed", err);
-        pushToast("error", "Could not load curriculum from the cloud.");
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-          // Allow subsequent local edits to sync back to the cloud.
-          setTimeout(() => {
-            suppressSyncRef.current = false;
-          }, 0);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [fetchTree]);
+  const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-  /* ---- Debounced sync to cloud on any tree change ---- */
-  useEffect(() => {
-    if (loading || suppressSyncRef.current) return;
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      // Strip client-only createdAt/updatedAt; server owns those.
-      const payload = {
-        levels: levels.map((l) => ({
-          id: l.id,
-          name: l.name,
-          code: l.code,
-          description: l.description,
-          subjects: l.subjects.map((s) => ({
-            id: s.id,
-            name: s.name,
-            code: s.code,
-            description: s.description,
-            chapters: s.chapters.map((c) => ({
-              id: c.id,
-              name: c.name,
-              code: c.code,
-              description: c.description,
-              status: c.status,
-            })),
-          })),
-        })),
-      };
-      saveTree({ data: payload })
-        .then((tree) => {
-          // Replace local state with the DB result so counts, timestamps
-          // and statuses match Supabase byte-for-byte. No derived values.
-          suppressSyncRef.current = true;
-          setLevels(tree as unknown as Level[]);
-          setTimeout(() => {
-            suppressSyncRef.current = false;
-          }, 0);
-        })
-        .catch((err: unknown) => {
-          console.error("[academic-manager] save failed", err);
-          const msg = err instanceof Error ? err.message : String(err);
-          pushToast("error", `Save failed: ${msg}`);
-        });
-    }, 600);
-    return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    };
-  }, [levels, loading, saveTree]);
+  const refreshEveryAcademicConsumer = async () => {
+    await qc.invalidateQueries();
+    await Promise.all([
+      qc.refetchQueries({ queryKey: ["academic-tree"], type: "all" }),
+      qc.refetchQueries({ queryKey: ["academic", "tree"], type: "all" }),
+      qc.refetchQueries({ queryKey: ["mcq-practice", "taxonomy"], type: "all" }),
+      qc.refetchQueries({ queryKey: ["qbank-practice", "taxonomy"], type: "all" }),
+      qc.refetchQueries({ queryKey: ["custom-exam", "taxonomy"], type: "all" }),
+    ]);
+  };
+
+  const afterMutation = async (message: string, result?: AcademicMutationResult) => {
+    if (result?.tree) qc.setQueryData(["academic-tree"], result.tree);
+    await refreshEveryAcademicConsumer();
+    pushToast("success", message);
+  };
+
+  const createLevelMut = useMutation({
+    mutationFn: (values: { name: string; code: string; description: string }) =>
+      createLevelFn({ data: values }),
+    onSuccess: async (res, values) => {
+      setActiveLevelId(res.id);
+      setActiveSubjectId(null);
+      setEditor(null);
+      await afterMutation(`Level “${values.name}” created.`, res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const updateLevelMut = useMutation({
+    mutationFn: (values: { id: string; name: string; code: string; description: string }) =>
+      updateLevelFn({ data: values }),
+    onSuccess: async (res) => {
+      setEditor(null);
+      await afterMutation("Level updated.", res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const deleteLevelMut = useMutation({
+    mutationFn: (id: string) => deleteLevelFn({ data: { id } }),
+    onSuccess: async (res) => {
+      setDel(null);
+      setActiveLevelId("");
+      setActiveSubjectId(null);
+      setSelectedChapters(new Set());
+      await afterMutation("Level deleted.", res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const createSubjectMut = useMutation({
+    mutationFn: (values: { parentId: string; name: string; code: string; description: string }) =>
+      createSubjectFn({ data: values }),
+    onSuccess: async (res, values) => {
+      setActiveLevelId(values.parentId);
+      setActiveSubjectId(res.id);
+      setEditor(null);
+      await afterMutation(`Subject “${values.name}” created.`, res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const updateSubjectMut = useMutation({
+    mutationFn: (values: { id: string; name: string; code: string; description: string }) =>
+      updateSubjectFn({ data: values }),
+    onSuccess: async (res) => {
+      setEditor(null);
+      await afterMutation("Subject updated.", res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const deleteSubjectMut = useMutation({
+    mutationFn: (id: string) => deleteSubjectFn({ data: { id } }),
+    onSuccess: async (res) => {
+      setDel(null);
+      setActiveSubjectId(null);
+      setSelectedChapters(new Set());
+      await afterMutation("Subject deleted.", res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const createChapterMut = useMutation({
+    mutationFn: (values: {
+      parentId: string;
+      name: string;
+      code: string;
+      description: string;
+      status: ChapterStatus;
+    }) => createChapterFn({ data: values }),
+    onSuccess: async (res, values) => {
+      setActiveSubjectId(values.parentId);
+      setEditor(null);
+      await afterMutation(`Chapter “${values.name}” created.`, res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const updateChapterMut = useMutation({
+    mutationFn: (values: {
+      id: string;
+      name: string;
+      code: string;
+      description: string;
+      status: ChapterStatus;
+    }) => updateChapterFn({ data: values }),
+    onSuccess: async (res) => {
+      setEditor(null);
+      await afterMutation("Chapter updated.", res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const deleteChapterMut = useMutation({
+    mutationFn: (ids: string[]) => deleteChapterFn({ data: { ids } }),
+    onSuccess: async (res) => {
+      setDel(null);
+      setSelectedChapters(new Set());
+      await afterMutation("Chapter deleted.", res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const busy =
+    createLevelMut.isPending ||
+    updateLevelMut.isPending ||
+    deleteLevelMut.isPending ||
+    createSubjectMut.isPending ||
+    updateSubjectMut.isPending ||
+    deleteSubjectMut.isPending ||
+    createChapterMut.isPending ||
+    updateChapterMut.isPending ||
+    deleteChapterMut.isPending;
+  const loading = baseLoading || busy;
 
   /* ---- Derived: totals (from DB tree only) ---- */
   const stats = useMemo(() => {
@@ -420,281 +474,35 @@ function AcademicManagerPage() {
     };
     const nextStatus: ChapterStatus = values.status === "published" ? "published" : "draft";
     if (!clean.name) return;
-    const stamp = Date.now();
-
-    try {
-      if (editor.mode === "create") {
-        if (editor.kind === "level") {
-          const nl: Level = {
-            id: uid(),
-            ...clean,
-            createdAt: stamp,
-            updatedAt: stamp,
-            subjects: [],
-          };
-          setLevels((prev) => [...prev, nl]);
-          setActiveLevelId(nl.id);
-          setActiveSubjectId(null);
-          pushToast("success", `Level “${clean.name}” created.`);
-        } else if (editor.kind === "subject" && editor.parent?.kind === "level") {
-          const parentId = editor.parent.levelId;
-          const ns: Subject = {
-            id: uid(),
-            ...clean,
-            createdAt: stamp,
-            updatedAt: stamp,
-            chapters: [],
-          };
-          setLevels((prev) =>
-            prev.map((l) =>
-              l.id === parentId ? { ...l, updatedAt: stamp, subjects: [...l.subjects, ns] } : l,
-            ),
-          );
-          setActiveLevelId(parentId);
-          setActiveSubjectId(ns.id);
-          pushToast("success", `Subject “${clean.name}” created.`);
-        } else if (editor.kind === "chapter" && editor.parent?.kind === "subject") {
-          const { levelId, subjectId } = editor.parent;
-          const nc: Chapter = {
-            id: uid(),
-            ...clean,
-            status: nextStatus,
-            createdAt: stamp,
-            updatedAt: stamp,
-            mcqCount: 0,
-            quizCount: 0,
-            mockCount: 0,
-          };
-          setLevels((prev) =>
-            prev.map((l) =>
-              l.id !== levelId
-                ? l
-                : {
-                    ...l,
-                    updatedAt: stamp,
-                    subjects: l.subjects.map((s) =>
-                      s.id !== subjectId
-                        ? s
-                        : { ...s, updatedAt: stamp, chapters: [...s.chapters, nc] },
-                    ),
-                  },
-            ),
-          );
-          setActiveLevelId(levelId);
-          setActiveSubjectId(subjectId);
-          pushToast("success", `Chapter “${clean.name}” created.`);
-        }
-      } else {
-        const t = editor.target;
-        if (t.kind === "level") {
-          setLevels((prev) =>
-            prev.map((l) => (l.id === t.levelId ? { ...l, ...clean, updatedAt: stamp } : l)),
-          );
-        } else if (t.kind === "subject") {
-          setLevels((prev) =>
-            prev.map((l) =>
-              l.id !== t.levelId
-                ? l
-                : {
-                    ...l,
-                    updatedAt: stamp,
-                    subjects: l.subjects.map((s) =>
-                      s.id === t.subjectId ? { ...s, ...clean, updatedAt: stamp } : s,
-                    ),
-                  },
-            ),
-          );
-        } else {
-          setLevels((prev) =>
-            prev.map((l) =>
-              l.id !== t.levelId
-                ? l
-                : {
-                    ...l,
-                    updatedAt: stamp,
-                    subjects: l.subjects.map((s) =>
-                      s.id !== t.subjectId
-                        ? s
-                        : {
-                            ...s,
-                            updatedAt: stamp,
-                            chapters: s.chapters.map((c) =>
-                              c.id === t.chapterId
-                                ? { ...c, ...clean, status: nextStatus, updatedAt: stamp }
-                                : c,
-                            ),
-                          },
-                    ),
-                  },
-            ),
-          );
-        }
-        pushToast("success", `${KIND_LABEL[editor.kind]} updated.`);
+    if (editor.mode === "create") {
+      if (editor.kind === "level") createLevelMut.mutate(clean);
+      else if (editor.kind === "subject" && editor.parent?.kind === "level") {
+        createSubjectMut.mutate({ ...clean, parentId: editor.parent.levelId });
+      } else if (editor.kind === "chapter" && editor.parent?.kind === "subject") {
+        createChapterMut.mutate({ ...clean, parentId: editor.parent.subjectId, status: nextStatus });
       }
-      setEditor(null);
-    } catch {
-      pushToast("error", "Something went wrong. Please try again.");
+      return;
     }
+
+    const target = editor.target;
+    if (target.kind === "level") updateLevelMut.mutate({ ...clean, id: target.levelId });
+    else if (target.kind === "subject") updateSubjectMut.mutate({ ...clean, id: target.subjectId });
+    else updateChapterMut.mutate({ ...clean, id: target.chapterId, status: nextStatus });
   }
 
-  function removeRefs(refs: NodeRef[]) {
-    let removedL = 0,
-      removedS = 0,
-      removedC = 0;
-    const levelIds = new Set(refs.filter((r) => r.kind === "level").map((r) => r.levelId));
-    const subjectIds = new Set(
-      refs
-        .filter((r) => r.kind === "subject")
-        .map((r) => (r as Extract<NodeRef, { kind: "subject" }>).subjectId),
+  function deleteRefs(refs: NodeRef[]) {
+    const levelsToDelete = refs.filter((r): r is Extract<NodeRef, { kind: "level" }> => r.kind === "level");
+    const subjectsToDelete = refs.filter(
+      (r): r is Extract<NodeRef, { kind: "subject" }> => r.kind === "subject",
     );
-    const chapterIds = new Set(
-      refs
-        .filter((r) => r.kind === "chapter")
-        .map((r) => (r as Extract<NodeRef, { kind: "chapter" }>).chapterId),
+    const chaptersToDelete = refs.filter(
+      (r): r is Extract<NodeRef, { kind: "chapter" }> => r.kind === "chapter",
     );
-
-    setLevels((prev) => {
-      const next: Level[] = [];
-      for (const l of prev) {
-        if (levelIds.has(l.id)) {
-          removedL++;
-          removedS += l.subjects.length;
-          for (const s of l.subjects) removedC += s.chapters.length;
-          continue;
-        }
-        const subjects: Subject[] = [];
-        for (const s of l.subjects) {
-          if (subjectIds.has(s.id)) {
-            removedS++;
-            removedC += s.chapters.length;
-            continue;
-          }
-          const chapters = s.chapters.filter((c) => {
-            if (chapterIds.has(c.id)) {
-              removedC++;
-              return false;
-            }
-            return true;
-          });
-          subjects.push({ ...s, chapters });
-        }
-        next.push({ ...l, subjects });
-      }
-      return next;
-    });
-    setSelectedChapters(new Set());
-    const parts: string[] = [];
-    if (removedL) parts.push(`${removedL} level${removedL > 1 ? "s" : ""}`);
-    if (removedS) parts.push(`${removedS} subject${removedS > 1 ? "s" : ""}`);
-    if (removedC) parts.push(`${removedC} chapter${removedC > 1 ? "s" : ""}`);
-    pushToast("success", `Deleted ${parts.join(", ") || "items"}.`);
-  }
-
-  function duplicateNode(ref: NodeRef) {
-    const stamp = Date.now();
-    setLevels((prev) => {
-      if (ref.kind === "level") {
-        const src = prev.find((l) => l.id === ref.levelId);
-        if (!src) return prev;
-        const clone: Level = {
-          ...src,
-          id: uid(),
-          name: `${src.name} (Copy)`,
-          createdAt: stamp,
-          updatedAt: stamp,
-          subjects: src.subjects.map((s) => ({
-            ...s,
-            id: uid(),
-            createdAt: stamp,
-            updatedAt: stamp,
-            chapters: s.chapters.map((c) => ({
-              ...c,
-              id: uid(),
-              createdAt: stamp,
-              updatedAt: stamp,
-            })),
-          })),
-        };
-        return [...prev, clone];
-      }
-      return prev.map((l) => {
-        if (l.id !== ref.levelId) return l;
-        if (ref.kind === "subject") {
-          const src = l.subjects.find((s) => s.id === ref.subjectId);
-          if (!src) return l;
-          const clone: Subject = {
-            ...src,
-            id: uid(),
-            name: `${src.name} (Copy)`,
-            createdAt: stamp,
-            updatedAt: stamp,
-            chapters: src.chapters.map((c) => ({
-              ...c,
-              id: uid(),
-              createdAt: stamp,
-              updatedAt: stamp,
-            })),
-          };
-          return { ...l, updatedAt: stamp, subjects: [...l.subjects, clone] };
-        }
-        // chapter
-        return {
-          ...l,
-          updatedAt: stamp,
-          subjects: l.subjects.map((s) => {
-            if (s.id !== ref.subjectId) return s;
-            const src = s.chapters.find((c) => c.id === ref.chapterId);
-            if (!src) return s;
-            const clone: Chapter = {
-              ...src,
-              id: uid(),
-              name: `${src.name} (Copy)`,
-              createdAt: stamp,
-              updatedAt: stamp,
-            };
-            return { ...s, updatedAt: stamp, chapters: [...s.chapters, clone] };
-          }),
-        };
-      });
-    });
-    pushToast("success", `${KIND_LABEL[ref.kind]} duplicated.`);
-  }
-
-  /* ---- Import / Export ---- */
-  function onExport() {
-    try {
-      const blob = new Blob([JSON.stringify(levels, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `academic-manager-${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      pushToast("success", "Curriculum exported.");
-    } catch {
-      pushToast("error", "Export failed.");
+    if (levelsToDelete.length) deleteLevelMut.mutate(levelsToDelete[0].levelId);
+    else if (subjectsToDelete.length) deleteSubjectMut.mutate(subjectsToDelete[0].subjectId);
+    else if (chaptersToDelete.length) {
+      deleteChapterMut.mutate(chaptersToDelete.map((r) => r.chapterId));
     }
-  }
-  function onImportFile(file: File) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result));
-        if (!Array.isArray(parsed)) throw new Error("Invalid file");
-        setLevels(parsed);
-        if (parsed[0]) {
-          setActiveLevelId(parsed[0].id);
-          setActiveSubjectId(parsed[0].subjects?.[0]?.id ?? null);
-        }
-        pushToast("success", "Curriculum imported.");
-      } catch {
-        pushToast("error", "Invalid file. Please upload a valid export.");
-      }
-    };
-    reader.onerror = () => pushToast("error", "Could not read file.");
-    reader.readAsText(file);
   }
 
   /* ---- Chapter selection ---- */
@@ -764,38 +572,16 @@ function AcademicManagerPage() {
               </h2>
               <p className="mt-1.5 max-w-xl text-sm text-muted-foreground">
                 Curate the <span className="text-foreground">Level → Subject → Chapter</span>{" "}
-                hierarchy. Changes autosave locally.
+                hierarchy. Every change is saved to the database.
               </p>
             </div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <input
-            ref={importRef}
-            type="file"
-            accept="application/json,.json"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) onImportFile(f);
-              e.target.value = "";
-            }}
-          />
-          <Button
-            variant="outline"
-            className="h-10 gap-1.5 rounded-xl"
-            onClick={() => importRef.current?.click()}
-          >
-            <Upload className="h-4 w-4" />
-            Import
-          </Button>
-          <Button variant="outline" className="h-10 gap-1.5 rounded-xl" onClick={onExport}>
-            <Download className="h-4 w-4" />
-            Export
-          </Button>
           <Button
             className="h-10 gap-1.5 rounded-xl bg-gradient-to-r from-primary via-primary to-accent px-4 shadow-[0_10px_28px_-10px_color-mix(in_oklab,var(--primary)_65%,transparent)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_32px_-10px_color-mix(in_oklab,var(--primary)_70%,transparent)]"
+            disabled={busy}
             onClick={() => setEditor({ mode: "create", kind: "level", parent: null })}
           >
             <Plus className="h-4 w-4" />
@@ -885,7 +671,6 @@ function AcademicManagerPage() {
             initial: { name: lvl.name, code: lvl.code, description: lvl.description },
           })
         }
-        onDuplicate={(lvl) => duplicateNode({ kind: "level", levelId: lvl.id })}
         onDelete={(lvl) => {
           const nested =
             lvl.subjects.length + lvl.subjects.reduce((n, s) => n + s.chapters.length, 0);
@@ -1047,10 +832,6 @@ function AcademicManagerPage() {
               nested: sub.chapters.length,
             })
           }
-          onDuplicate={(sub) =>
-            activeLevel &&
-            duplicateNode({ kind: "subject", levelId: activeLevel.id, subjectId: sub.id })
-          }
         />
 
         <ChaptersPanel
@@ -1106,16 +887,6 @@ function AcademicManagerPage() {
               nested: 0,
             })
           }
-          onDuplicate={(ch) =>
-            activeLevel &&
-            activeSubject &&
-            duplicateNode({
-              kind: "chapter",
-              levelId: activeLevel.id,
-              subjectId: activeSubject.id,
-              chapterId: ch.id,
-            })
-          }
         />
       </div>
 
@@ -1126,9 +897,8 @@ function AcademicManagerPage() {
         onClose={() => setDel(null)}
         onConfirm={() => {
           if (!del) return;
-          if (del.kind === "single") removeRefs([del.target]);
-          else removeRefs(del.refs);
-          setDel(null);
+          if (del.kind === "single") deleteRefs([del.target]);
+          else deleteRefs(del.refs);
         }}
       />
       <ToastStack toasts={toasts} />
@@ -1467,7 +1237,6 @@ function LevelPills({
   onSelect,
   onAdd,
   onEdit,
-  onDuplicate,
   onDelete,
 }: {
   levels: Level[];
@@ -1475,7 +1244,6 @@ function LevelPills({
   onSelect: (id: string) => void;
   onAdd: () => void;
   onEdit: (lvl: Level) => void;
-  onDuplicate: (lvl: Level) => void;
   onDelete: (lvl: Level) => void;
 }) {
   return (
@@ -1524,7 +1292,6 @@ function LevelPills({
               >
                 <RowMenu
                   onEdit={() => onEdit(lvl)}
-                  onDuplicate={() => onDuplicate(lvl)}
                   onDelete={() => onDelete(lvl)}
                 />
               </span>
@@ -1558,7 +1325,6 @@ function SubjectsPanel({
   onAdd,
   onEdit,
   onDelete,
-  onDuplicate,
 }: {
   loading: boolean;
   level: Level | null;
@@ -1569,7 +1335,6 @@ function SubjectsPanel({
   onAdd: () => void;
   onEdit: (s: Subject) => void;
   onDelete: (s: Subject) => void;
-  onDuplicate: (s: Subject) => void;
 }) {
   return (
     <section className="surface-editorial relative overflow-hidden rounded-2xl">
@@ -1670,7 +1435,6 @@ function SubjectsPanel({
                     >
                       <RowMenu
                         onEdit={() => onEdit(sub)}
-                        onDuplicate={() => onDuplicate(sub)}
                         onDelete={() => onDelete(sub)}
                       />
                     </span>
@@ -1718,7 +1482,6 @@ function ChaptersPanel({
   onAdd,
   onEdit,
   onDelete,
-  onDuplicate,
 }: {
   loading: boolean;
   subject: Subject | null;
@@ -1731,7 +1494,6 @@ function ChaptersPanel({
   onAdd: () => void;
   onEdit: (c: Chapter) => void;
   onDelete: (c: Chapter) => void;
-  onDuplicate: (c: Chapter) => void;
 }) {
   return (
     <section className="glass-panel relative overflow-hidden rounded-2xl">
@@ -1880,7 +1642,6 @@ function ChaptersPanel({
                       </button>
                       <RowMenu
                         onEdit={() => onEdit(c)}
-                        onDuplicate={() => onDuplicate(c)}
                         onDelete={() => onDelete(c)}
                       />
                     </div>
@@ -2003,11 +1764,9 @@ function IndeterminateCheckbox({
 
 function RowMenu({
   onEdit,
-  onDuplicate,
   onDelete,
 }: {
   onEdit: () => void;
-  onDuplicate: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -2028,10 +1787,6 @@ function RowMenu({
         <DropdownMenuItem onClick={onEdit}>
           <Pencil className="mr-2 h-4 w-4" />
           Edit
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onDuplicate}>
-          <Copy className="mr-2 h-4 w-4" />
-          Duplicate
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
