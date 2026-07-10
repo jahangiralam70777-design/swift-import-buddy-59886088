@@ -1,7 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getAcademicTree, syncAcademicTree } from "@/lib/academic.functions";
+import {
+  createAcademicChapter,
+  createAcademicLevel,
+  createAcademicSubject,
+  deleteAcademicChapter,
+  deleteAcademicLevel,
+  deleteAcademicSubject,
+  getAcademicTree,
+  updateAcademicChapter,
+  updateAcademicLevel,
+  updateAcademicSubject,
+  type AcademicMutationResult,
+} from "@/lib/academic.functions";
 import {
   AnimatePresence,
   motion,
@@ -14,8 +27,6 @@ import {
   BookOpen,
   CheckCircle2,
   ChevronRight,
-  Copy,
-  Download,
   FileText,
   Filter,
   GraduationCap,
@@ -30,7 +41,6 @@ import {
   Timer,
   Trash2,
   TriangleAlert,
-  Upload,
   X,
   ArrowUpRight,
   GripVertical,
@@ -150,29 +160,7 @@ type DeleteState =
 type ToastTone = "success" | "error" | "info";
 type Toast = { id: string; tone: ToastTone; message: string };
 
-/* ---------------------------------------------------------------- Seed */
-
 /* ---------------------------------------------------------------- Utils */
-
-// Must be a valid UUID — Supabase columns are `uuid` typed and reject anything else.
-const uid = () => {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
-  // RFC4122 v4 fallback
-  const b = new Uint8Array(16);
-  (typeof crypto !== "undefined"
-    ? crypto
-    : {
-        getRandomValues: (a: Uint8Array) => {
-          for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256);
-          return a;
-        },
-      }
-  ).getRandomValues(b);
-  b[6] = (b[6] & 0x0f) | 0x40;
-  b[8] = (b[8] & 0x3f) | 0x80;
-  const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
-};
 
 function nodeKey(r: NodeRef) {
   if (r.kind === "level") return `L:${r.levelId}`;
@@ -221,7 +209,7 @@ function useCountUp(value: number, duration = 0.9) {
 /* ---------------------------------------------------------------- Page */
 
 function AcademicManagerPage() {
-  const [levels, setLevels] = useState<Level[]>([]);
+  const qc = useQueryClient();
   const [activeLevelId, setActiveLevelId] = useState<string>("");
   const [activeSubjectId, setActiveSubjectId] = useState<string | null>(null);
   const [selectedChapters, setSelectedChapters] = useState<Set<string>>(new Set());
@@ -231,100 +219,171 @@ function AcademicManagerPage() {
   const [editor, setEditor] = useState<EditorState>(null);
   const [del, setDel] = useState<DeleteState>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [loading, setLoading] = useState(true);
-  const importRef = useRef<HTMLInputElement>(null);
 
   const fetchTree = useServerFn(getAcademicTree);
-  const saveTree = useServerFn(syncAcademicTree);
-  const suppressSyncRef = useRef(true);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const createLevelFn = useServerFn(createAcademicLevel);
+  const updateLevelFn = useServerFn(updateAcademicLevel);
+  const deleteLevelFn = useServerFn(deleteAcademicLevel);
+  const createSubjectFn = useServerFn(createAcademicSubject);
+  const updateSubjectFn = useServerFn(updateAcademicSubject);
+  const deleteSubjectFn = useServerFn(deleteAcademicSubject);
+  const createChapterFn = useServerFn(createAcademicChapter);
+  const updateChapterFn = useServerFn(updateAcademicChapter);
+  const deleteChapterFn = useServerFn(deleteAcademicChapter);
+
+  const treeQuery = useQuery({
+    queryKey: ["academic-tree"],
+    queryFn: () => fetchTree(),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+  const levels = useMemo(() => (treeQuery.data ?? []) as Level[], [treeQuery.data]);
+  const loading = treeQuery.isLoading || treeQuery.isFetching;
 
   /* ---- Toast helper ---- */
   const pushToast = (tone: ToastTone, message: string) => {
-    const id = uid();
+    const id = `${performance.now()}`;
     setToasts((t) => [...t, { id, tone, message }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200);
   };
 
-  /* ---- Load from cloud ---- */
-  useEffect(() => {
-    let cancelled = false;
-    suppressSyncRef.current = true;
-    fetchTree()
-      .then((tree) => {
-        if (cancelled) return;
-        const asLevels = tree as unknown as Level[];
-        setLevels(asLevels);
-        if (asLevels[0]) {
-          setActiveLevelId(asLevels[0].id);
-          setActiveSubjectId(asLevels[0].subjects[0]?.id ?? null);
-        }
-      })
-      .catch((err) => {
-        console.error("[academic-manager] load failed", err);
-        pushToast("error", "Could not load curriculum from the cloud.");
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-          // Allow subsequent local edits to sync back to the cloud.
-          setTimeout(() => {
-            suppressSyncRef.current = false;
-          }, 0);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [fetchTree]);
+  const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
-  /* ---- Debounced sync to cloud on any tree change ---- */
-  useEffect(() => {
-    if (loading || suppressSyncRef.current) return;
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      // Strip client-only createdAt/updatedAt; server owns those.
-      const payload = {
-        levels: levels.map((l) => ({
-          id: l.id,
-          name: l.name,
-          code: l.code,
-          description: l.description,
-          subjects: l.subjects.map((s) => ({
-            id: s.id,
-            name: s.name,
-            code: s.code,
-            description: s.description,
-            chapters: s.chapters.map((c) => ({
-              id: c.id,
-              name: c.name,
-              code: c.code,
-              description: c.description,
-              status: c.status,
-            })),
-          })),
-        })),
-      };
-      saveTree({ data: payload })
-        .then((tree) => {
-          // Replace local state with the DB result so counts, timestamps
-          // and statuses match Supabase byte-for-byte. No derived values.
-          suppressSyncRef.current = true;
-          setLevels(tree as unknown as Level[]);
-          setTimeout(() => {
-            suppressSyncRef.current = false;
-          }, 0);
-        })
-        .catch((err: unknown) => {
-          console.error("[academic-manager] save failed", err);
-          const msg = err instanceof Error ? err.message : String(err);
-          pushToast("error", `Save failed: ${msg}`);
-        });
-    }, 600);
-    return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    };
-  }, [levels, loading, saveTree]);
+  const refreshEveryAcademicConsumer = async () => {
+    await qc.invalidateQueries();
+    await Promise.all([
+      qc.refetchQueries({ queryKey: ["academic-tree"], type: "all" }),
+      qc.refetchQueries({ queryKey: ["academic", "tree"], type: "all" }),
+      qc.refetchQueries({ queryKey: ["mcq-practice", "taxonomy"], type: "all" }),
+      qc.refetchQueries({ queryKey: ["qbank-practice", "taxonomy"], type: "all" }),
+      qc.refetchQueries({ queryKey: ["custom-exam", "taxonomy"], type: "all" }),
+    ]);
+  };
+
+  const afterMutation = async (message: string, result?: AcademicMutationResult) => {
+    if (result?.tree) qc.setQueryData(["academic-tree"], result.tree);
+    await refreshEveryAcademicConsumer();
+    pushToast("success", message);
+  };
+
+  const createLevelMut = useMutation({
+    mutationFn: (values: { name: string; code: string; description: string }) =>
+      createLevelFn({ data: values }),
+    onSuccess: async (res, values) => {
+      setActiveLevelId(res.id);
+      setActiveSubjectId(null);
+      setEditor(null);
+      await afterMutation(`Level “${values.name}” created.`, res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const updateLevelMut = useMutation({
+    mutationFn: (values: { id: string; name: string; code: string; description: string }) =>
+      updateLevelFn({ data: values }),
+    onSuccess: async (res) => {
+      setEditor(null);
+      await afterMutation("Level updated.", res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const deleteLevelMut = useMutation({
+    mutationFn: (id: string) => deleteLevelFn({ data: { id } }),
+    onSuccess: async (res) => {
+      setDel(null);
+      setActiveLevelId("");
+      setActiveSubjectId(null);
+      setSelectedChapters(new Set());
+      await afterMutation("Level deleted.", res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const createSubjectMut = useMutation({
+    mutationFn: (values: { parentId: string; name: string; code: string; description: string }) =>
+      createSubjectFn({ data: values }),
+    onSuccess: async (res, values) => {
+      setActiveLevelId(values.parentId);
+      setActiveSubjectId(res.id);
+      setEditor(null);
+      await afterMutation(`Subject “${values.name}” created.`, res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const updateSubjectMut = useMutation({
+    mutationFn: (values: { id: string; name: string; code: string; description: string }) =>
+      updateSubjectFn({ data: values }),
+    onSuccess: async (res) => {
+      setEditor(null);
+      await afterMutation("Subject updated.", res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const deleteSubjectMut = useMutation({
+    mutationFn: (id: string) => deleteSubjectFn({ data: { id } }),
+    onSuccess: async (res) => {
+      setDel(null);
+      setActiveSubjectId(null);
+      setSelectedChapters(new Set());
+      await afterMutation("Subject deleted.", res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const createChapterMut = useMutation({
+    mutationFn: (values: {
+      parentId: string;
+      name: string;
+      code: string;
+      description: string;
+      status: ChapterStatus;
+    }) => createChapterFn({ data: values }),
+    onSuccess: async (res, values) => {
+      setActiveSubjectId(values.parentId);
+      setEditor(null);
+      await afterMutation(`Chapter “${values.name}” created.`, res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const updateChapterMut = useMutation({
+    mutationFn: (values: {
+      id: string;
+      name: string;
+      code: string;
+      description: string;
+      status: ChapterStatus;
+    }) => updateChapterFn({ data: values }),
+    onSuccess: async (res) => {
+      setEditor(null);
+      await afterMutation("Chapter updated.", res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const deleteChapterMut = useMutation({
+    mutationFn: (ids: string[]) => deleteChapterFn({ data: { ids } }),
+    onSuccess: async (res) => {
+      setDel(null);
+      setSelectedChapters(new Set());
+      await afterMutation("Chapter deleted.", res);
+    },
+    onError: (err) => pushToast("error", errorMessage(err)),
+  });
+
+  const busy =
+    createLevelMut.isPending ||
+    updateLevelMut.isPending ||
+    deleteLevelMut.isPending ||
+    createSubjectMut.isPending ||
+    updateSubjectMut.isPending ||
+    deleteSubjectMut.isPending ||
+    createChapterMut.isPending ||
+    updateChapterMut.isPending ||
+    deleteChapterMut.isPending;
 
   /* ---- Derived: totals (from DB tree only) ---- */
   const stats = useMemo(() => {
