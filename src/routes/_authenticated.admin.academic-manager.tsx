@@ -159,14 +159,19 @@ const uid = () => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   // RFC4122 v4 fallback
   const b = new Uint8Array(16);
-  (typeof crypto !== "undefined" ? crypto : { getRandomValues: (a: Uint8Array) => {
-    for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256);
-    return a;
-  } }).getRandomValues(b);
+  (typeof crypto !== "undefined"
+    ? crypto
+    : {
+        getRandomValues: (a: Uint8Array) => {
+          for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256);
+          return a;
+        },
+      }
+  ).getRandomValues(b);
   b[6] = (b[6] & 0x0f) | 0x40;
   b[8] = (b[8] & 0x3f) | 0x80;
   const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
-  return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 };
 
 function nodeKey(r: NodeRef) {
@@ -834,7 +839,9 @@ function AcademicManagerPage() {
           icon={CheckCircle2}
           label="Published Chapters"
           value={stats.published}
-          delta={stats.c ? `${Math.round((stats.published / stats.c) * 100)}% of total` : "None yet"}
+          delta={
+            stats.c ? `${Math.round((stats.published / stats.c) * 100)}% of total` : "None yet"
+          }
           tone="amber"
         />
         <StatCard
@@ -880,7 +887,8 @@ function AcademicManagerPage() {
         }
         onDuplicate={(lvl) => duplicateNode({ kind: "level", levelId: lvl.id })}
         onDelete={(lvl) => {
-          const nested = lvl.subjects.length + lvl.subjects.reduce((n, s) => n + s.chapters.length, 0);
+          const nested =
+            lvl.subjects.length + lvl.subjects.reduce((n, s) => n + s.chapters.length, 0);
           setDel({
             kind: "single",
             target: { kind: "level", levelId: lvl.id },
@@ -1075,7 +1083,12 @@ function AcademicManagerPage() {
                 subjectId: activeSubject.id,
                 chapterId: ch.id,
               },
-              initial: { name: ch.name, code: ch.code, description: ch.description, status: ch.status },
+              initial: {
+                name: ch.name,
+                code: ch.code,
+                description: ch.description,
+                status: ch.status,
+              },
             })
           }
           onDelete={(ch) =>
@@ -1533,7 +1546,6 @@ function LevelPills({
   );
 }
 
-
 /* ---------------- Subjects Panel ---------------- */
 
 function SubjectsPanel({
@@ -1838,10 +1850,7 @@ function ChaptersPanel({
                         <MetricChip label="MCQ" value={c.mcqCount} tone="indigo" />
                         <MetricChip label="Quiz" value={c.quizCount} tone="cyan" />
                         <MetricChip label="Mock" value={c.mockCount} tone="fuchsia" />
-                        <StatusPill
-                          active={published}
-                          label={published ? "Published" : "Draft"}
-                        />
+                        <StatusPill active={published} label={published ? "Published" : "Draft"} />
                       </div>
                     </div>
 
@@ -2080,12 +2089,7 @@ function EditorDialog({
 }: {
   state: EditorState;
   onClose: () => void;
-  onSave: (v: {
-    name: string;
-    code: string;
-    description: string;
-    status?: ChapterStatus;
-  }) => void;
+  onSave: (v: { name: string; code: string; description: string; status?: ChapterStatus }) => void;
 }) {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");

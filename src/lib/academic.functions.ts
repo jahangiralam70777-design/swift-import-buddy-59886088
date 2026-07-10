@@ -79,7 +79,10 @@ async function countPublishedByChapter(
   const client = supabase as unknown as {
     from: (t: string) => {
       select: (cols: string) => {
-        eq: (col: string, val: string) => Promise<{
+        eq: (
+          col: string,
+          val: string,
+        ) => Promise<{
           data: Array<{ chapter_id: string | null }> | null;
           error: { message: string; code?: string } | null;
         }>;
