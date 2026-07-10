@@ -1237,7 +1237,6 @@ function LevelPills({
   onSelect,
   onAdd,
   onEdit,
-  onDuplicate,
   onDelete,
 }: {
   levels: Level[];
@@ -1245,7 +1244,6 @@ function LevelPills({
   onSelect: (id: string) => void;
   onAdd: () => void;
   onEdit: (lvl: Level) => void;
-  onDuplicate: (lvl: Level) => void;
   onDelete: (lvl: Level) => void;
 }) {
   return (
@@ -1294,7 +1292,6 @@ function LevelPills({
               >
                 <RowMenu
                   onEdit={() => onEdit(lvl)}
-                  onDuplicate={() => onDuplicate(lvl)}
                   onDelete={() => onDelete(lvl)}
                 />
               </span>
@@ -1328,7 +1325,6 @@ function SubjectsPanel({
   onAdd,
   onEdit,
   onDelete,
-  onDuplicate,
 }: {
   loading: boolean;
   level: Level | null;
@@ -1339,7 +1335,6 @@ function SubjectsPanel({
   onAdd: () => void;
   onEdit: (s: Subject) => void;
   onDelete: (s: Subject) => void;
-  onDuplicate: (s: Subject) => void;
 }) {
   return (
     <section className="surface-editorial relative overflow-hidden rounded-2xl">
@@ -1440,7 +1435,6 @@ function SubjectsPanel({
                     >
                       <RowMenu
                         onEdit={() => onEdit(sub)}
-                        onDuplicate={() => onDuplicate(sub)}
                         onDelete={() => onDelete(sub)}
                       />
                     </span>
@@ -1488,7 +1482,6 @@ function ChaptersPanel({
   onAdd,
   onEdit,
   onDelete,
-  onDuplicate,
 }: {
   loading: boolean;
   subject: Subject | null;
@@ -1501,7 +1494,6 @@ function ChaptersPanel({
   onAdd: () => void;
   onEdit: (c: Chapter) => void;
   onDelete: (c: Chapter) => void;
-  onDuplicate: (c: Chapter) => void;
 }) {
   return (
     <section className="glass-panel relative overflow-hidden rounded-2xl">
@@ -1650,7 +1642,6 @@ function ChaptersPanel({
                       </button>
                       <RowMenu
                         onEdit={() => onEdit(c)}
-                        onDuplicate={() => onDuplicate(c)}
                         onDelete={() => onDelete(c)}
                       />
                     </div>
@@ -1773,11 +1764,9 @@ function IndeterminateCheckbox({
 
 function RowMenu({
   onEdit,
-  onDuplicate,
   onDelete,
 }: {
   onEdit: () => void;
-  onDuplicate: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -1798,10 +1787,6 @@ function RowMenu({
         <DropdownMenuItem onClick={onEdit}>
           <Pencil className="mr-2 h-4 w-4" />
           Edit
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onDuplicate}>
-          <Copy className="mr-2 h-4 w-4" />
-          Duplicate
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
