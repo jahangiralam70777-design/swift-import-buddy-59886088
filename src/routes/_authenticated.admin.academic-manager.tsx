@@ -2080,11 +2080,17 @@ function EditorDialog({
 }: {
   state: EditorState;
   onClose: () => void;
-  onSave: (v: { name: string; code: string; description: string }) => void;
+  onSave: (v: {
+    name: string;
+    code: string;
+    description: string;
+    status?: ChapterStatus;
+  }) => void;
 }) {
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [description, setDescription] = useState("");
+  const [status, setStatus] = useState<ChapterStatus>("draft");
   const [nameError, setNameError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -2093,10 +2099,12 @@ function EditorDialog({
       setName(state.initial.name);
       setCode(state.initial.code);
       setDescription(state.initial.description);
+      setStatus(state.initial.status ?? "draft");
     } else {
       setName("");
       setCode("");
       setDescription("");
+      setStatus("draft");
     }
     setNameError(null);
   }, [state]);
@@ -2112,14 +2120,19 @@ function EditorDialog({
       ? "A level groups related subjects and chapters."
       : kind === "subject"
         ? "A subject belongs to a level and contains chapters."
-        : "A chapter belongs to a subject.";
+        : "A chapter belongs to a subject. New chapters start as Draft.";
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return setNameError("Name is required.");
     if (trimmed.length > 120) return setNameError("Must be 120 characters or fewer.");
-    onSave({ name: trimmed, code, description });
+    onSave({
+      name: trimmed,
+      code,
+      description,
+      status: kind === "chapter" ? status : undefined,
+    });
   }
 
   return (
