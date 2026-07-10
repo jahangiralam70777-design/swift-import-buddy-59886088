@@ -182,15 +182,17 @@ async function nextPosition(
   table: "academic_levels" | "academic_subjects" | "academic_chapters",
   parent?: { column: "level_id" | "subject_id"; id: string },
 ): Promise<number> {
-  let query = supabase
+  const base = supabase
     .from(table)
     .select("position")
     .order("position", { ascending: false })
-    .limit(1) as unknown as {
-    eq: (column: string, value: string) => typeof query;
-    then: Promise<{ data: Array<{ position: number }> | null; error: { message: string } | null }>["then"];
-  };
-  if (parent) query = query.eq(parent.column, parent.id);
+    .limit(1);
+  const query = parent
+    ? (base as unknown as { eq: (column: string, value: string) => typeof base }).eq(
+        parent.column,
+        parent.id,
+      )
+    : base;
   const { data, error } = await query;
   if (error) throw new Error(error.message);
   const current = Number(data?.[0]?.position ?? -1);
