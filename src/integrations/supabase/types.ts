@@ -22,6 +22,7 @@ export type Database = {
           name: string
           position: number
           slug: string | null
+          status: string
           subject_id: string
           updated_at: string
         }
@@ -32,6 +33,7 @@ export type Database = {
           name: string
           position?: number
           slug?: string | null
+          status?: string
           subject_id: string
           updated_at?: string
         }
@@ -42,6 +44,7 @@ export type Database = {
           name?: string
           position?: number
           slug?: string | null
+          status?: string
           subject_id?: string
           updated_at?: string
         }
