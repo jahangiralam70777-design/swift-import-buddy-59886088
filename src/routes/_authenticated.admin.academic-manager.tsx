@@ -1752,7 +1752,7 @@ function ChaptersPanel({
           <ul className="divide-y divide-border/50">
             <AnimatePresence initial={false}>
               {chapters.map((c, i) => {
-                const m = chapterMetrics(c.id);
+                const published = c.status === "published";
                 const isSelected = selected.has(c.id);
                 return (
                   <motion.li
@@ -1797,27 +1797,27 @@ function ChaptersPanel({
 
                       {/* Mobile inline metrics */}
                       <div className="mt-2 flex flex-wrap items-center gap-2 md:hidden">
-                        <MetricChip label="MCQ" value={m.mcq} tone="indigo" />
-                        <MetricChip label="Quiz" value={m.quiz} tone="cyan" />
-                        <MetricChip label="Mock" value={m.mock} tone="fuchsia" />
+                        <MetricChip label="MCQ" value={c.mcqCount} tone="indigo" />
+                        <MetricChip label="Quiz" value={c.quizCount} tone="cyan" />
+                        <MetricChip label="Mock" value={c.mockCount} tone="fuchsia" />
                         <StatusPill
-                          active={m.published}
-                          label={m.published ? "Published" : "Draft"}
+                          active={published}
+                          label={published ? "Published" : "Draft"}
                         />
                       </div>
                     </div>
 
                     <div className="hidden text-right md:block">
-                      <MetricNum value={m.mcq} tone="indigo" />
+                      <MetricNum value={c.mcqCount} tone="indigo" />
                     </div>
                     <div className="hidden text-right md:block">
-                      <MetricNum value={m.quiz} tone="cyan" />
+                      <MetricNum value={c.quizCount} tone="cyan" />
                     </div>
                     <div className="hidden text-right md:block">
-                      <MetricNum value={m.mock} tone="fuchsia" />
+                      <MetricNum value={c.mockCount} tone="fuchsia" />
                     </div>
                     <div className="hidden justify-end md:flex">
-                      <StatusPill active={m.published} label={m.published ? "Live" : "Draft"} />
+                      <StatusPill active={published} label={published ? "Live" : "Draft"} />
                     </div>
                     <div className="hidden text-right text-[11px] text-muted-foreground md:block">
                       {timeAgo(c.updatedAt)}
