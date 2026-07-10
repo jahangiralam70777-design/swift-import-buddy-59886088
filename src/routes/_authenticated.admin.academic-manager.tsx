@@ -1563,9 +1563,7 @@ function SubjectsPanel({
           <ul className="space-y-2">
             {subjects.map((sub, i) => {
               const active = sub.id === activeSubjectId;
-              const publishedCount = sub.chapters.filter(
-                (c) => chapterMetrics(c.id).published,
-              ).length;
+              const publishedCount = sub.chapters.filter((c) => c.status === "published").length;
               return (
                 <motion.li
                   key={sub.id}
