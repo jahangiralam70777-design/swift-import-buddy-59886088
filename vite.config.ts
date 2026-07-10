@@ -6,10 +6,26 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
+// Render deployment: set BUILD_TARGET=render to switch Nitro to the Node server preset.
+// Leaving it unset keeps the default Cloudflare preset used by the Lovable sandbox.
+const isRender = process.env.BUILD_TARGET === "render";
+
 export default defineConfig({
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  ...(isRender
+    ? {
+        nitro: {
+          preset: "node-server",
+          output: {
+            dir: ".output",
+            serverDir: ".output/server",
+            publicDir: ".output/public",
+          },
+        },
+      }
+    : {}),
 });
