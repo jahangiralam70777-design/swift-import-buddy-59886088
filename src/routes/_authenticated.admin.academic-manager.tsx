@@ -434,7 +434,16 @@ function AcademicManagerPage() {
           pushToast("success", `Subject “${clean.name}” created.`);
         } else if (editor.kind === "chapter" && editor.parent?.kind === "subject") {
           const { levelId, subjectId } = editor.parent;
-          const nc: Chapter = { id: uid(), ...clean, createdAt: stamp, updatedAt: stamp };
+          const nc: Chapter = {
+            id: uid(),
+            ...clean,
+            status: "draft",
+            createdAt: stamp,
+            updatedAt: stamp,
+            mcqCount: 0,
+            quizCount: 0,
+            mockCount: 0,
+          };
           setLevels((prev) =>
             prev.map((l) =>
               l.id !== levelId
