@@ -310,30 +310,29 @@ function AcademicManagerPage() {
     };
   }, [levels, loading, saveTree]);
 
-  /* ---- Derived: totals ---- */
+  /* ---- Derived: totals (from DB tree only) ---- */
   const stats = useMemo(() => {
     let l = 0,
       s = 0,
       c = 0,
-      recent = 0,
+      published = 0,
+      draft = 0,
       latest = 0;
-    const cutoff = Date.now() - 7 * 86_400_000;
     for (const lvl of levels) {
       l++;
-      if (lvl.createdAt >= cutoff) recent++;
       latest = Math.max(latest, lvl.updatedAt);
       for (const sub of lvl.subjects) {
         s++;
-        if (sub.createdAt >= cutoff) recent++;
         latest = Math.max(latest, sub.updatedAt);
         for (const ch of sub.chapters) {
           c++;
-          if (ch.createdAt >= cutoff) recent++;
+          if (ch.status === "published") published++;
+          else draft++;
           latest = Math.max(latest, ch.updatedAt);
         }
       }
     }
-    return { l, s, c, recent, latest };
+    return { l, s, c, published, draft, latest };
   }, [levels]);
 
   /* ---- Active level / subject resolution ---- */
