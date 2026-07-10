@@ -2210,6 +2210,23 @@ function EditorDialog({
             />
             <p className="text-right text-[10px] text-muted-foreground">{description.length}/500</p>
           </div>
+          {kind === "chapter" && (
+            <div className="space-y-1.5">
+              <Label htmlFor="am-status">Status</Label>
+              <Select value={status} onValueChange={(v) => setStatus(v as ChapterStatus)}>
+                <SelectTrigger id="am-status" className="h-11 rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="published">Published (Live)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                Published chapters show as “Live”. This value is stored in Supabase.
+              </p>
+            </div>
+          )}
           <DialogFooter className="gap-2 sm:gap-2">
             <Button type="button" variant="outline" onClick={onClose} className="rounded-xl">
               Cancel
