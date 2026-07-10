@@ -1,16 +1,5 @@
 // Server functions for the Academic Manager.
-//
-// SINGLE SOURCE OF TRUTH for the Level -> Subject -> Chapter hierarchy
-// and every count/metric displayed for it. Everything comes from the
-// database: no hashes, no random values, no placeholders.
-//
-// Counts are computed from real tables:
-//   - MCQ:  SELECT chapter_id FROM mcq_questions WHERE status='published'
-//   - Quiz: SELECT chapter_id FROM quizzes       WHERE status='published'
-//   - Mock: SELECT chapter_id FROM mock_tests    WHERE status='published'
-//
-// Chapter `status` (draft | published) also comes straight from the row;
-// a newly created chapter defaults to 'draft'.
+// The database is the single source of truth for the Level → Subject → Chapter hierarchy.
 
 import { createServerFn } from "@tanstack/react-start";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -54,6 +43,22 @@ export type ApiLevel = {
   subjects: ApiSubject[];
 };
 
+export type AcademicMutationResult = {
+  id: string;
+  tree: ApiLevel[];
+};
+
+type EntityInput = {
+  id?: string;
+  parentId?: string;
+  name: string;
+  code?: string;
+  description?: string;
+  status?: string;
+};
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 async function assertAdmin(context: { supabase: DbClient; userId: string }) {
   const { data, error } = await context.supabase.rpc("has_role", {
     _user_id: context.userId,
@@ -67,10 +72,22 @@ function normalizeStatus(v: unknown): ChapterStatus {
   return v === "published" ? "published" : "draft";
 }
 
-// Count rows with status='published' grouped by chapter_id. Reads from real
-// tables. If the table does not exist yet (e.g. before the quizzes /
-// mock_tests migration has been applied on a given environment) the query
-// fails cleanly and we return an empty map so counts stay at 0 — never fake.
+function cleanEntity(input: unknown, needsId: boolean, needsParent: boolean): EntityInput {
+  const src = (input ?? {}) as Record<string, unknown>;
+  const id = typeof src.id === "string" ? src.id : undefined;
+  const parentId = typeof src.parentId === "string" ? src.parentId : undefined;
+  const name = typeof src.name === "string" ? src.name.trim() : "";
+  const code = typeof src.code === "string" ? src.code.trim().slice(0, 32) : "";
+  const description =
+    typeof src.description === "string" ? src.description.trim().slice(0, 500) : "";
+  const status = typeof src.status === "string" ? src.status : undefined;
+  if (needsId && (!id || !UUID_RE.test(id))) throw new Error("Valid id is required");
+  if (needsParent && (!parentId || !UUID_RE.test(parentId))) throw new Error("Valid parent id is required");
+  if (!name) throw new Error("Name is required");
+  if (name.length > 120) throw new Error("Name must be 120 characters or fewer");
+  return { id, parentId, name, code, description, status };
+}
+
 async function countPublishedByChapter(
   supabase: DbClient,
   table: "mcq_questions" | "quizzes" | "mock_tests",
@@ -91,9 +108,7 @@ async function countPublishedByChapter(
   };
   const { data, error } = await client.from(table).select("chapter_id").eq("status", "published");
   if (error) {
-    // Missing table / column → treat as zero. Never guess a number.
-    console.warn(`[academic.counts] ${table}: ${error.message}`);
-    return map;
+    throw new Error(error.message);
   }
   for (const row of data ?? []) {
     if (!row.chapter_id) continue;
@@ -162,161 +177,224 @@ async function loadTree(supabase: DbClient): Promise<ApiLevel[]> {
   }));
 }
 
+async function nextPosition(
+  supabase: DbClient,
+  table: "academic_levels" | "academic_subjects" | "academic_chapters",
+  parent?: { column: "level_id" | "subject_id"; id: string },
+): Promise<number> {
+  let query = supabase.from(table).select("position").order("position", { ascending: false }).limit(1);
+  if (parent) query = query.eq(parent.column, parent.id);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  const current = Number(data?.[0]?.position ?? -1);
+  return Number.isFinite(current) ? current + 1 : 0;
+}
+
+function assertDeleted(kind: string, rows: Array<{ id: string }> | null) {
+  if (!rows?.length) throw new Error(`${kind} was not found or was already deleted`);
+}
+
 export const getAcademicTree = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => loadTree(context.supabase));
 
-type TreeInput = {
-  levels: Array<{
-    id: string;
-    name: string;
-    code: string;
-    description: string;
-    subjects: Array<{
-      id: string;
-      name: string;
-      code: string;
-      description: string;
-      chapters: Array<{
-        id: string;
-        name: string;
-        code: string;
-        description: string;
-        status?: string;
-      }>;
-    }>;
-  }>;
-};
-
-function isTreeInput(v: unknown): v is TreeInput {
-  if (!v || typeof v !== "object") return false;
-  const t = v as { levels?: unknown };
-  return Array.isArray(t.levels);
-}
-
-export const syncAcademicTree = createServerFn({ method: "POST" })
+export const createAcademicLevel = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => {
-    if (!isTreeInput(input)) throw new Error("Invalid tree payload");
-    return input;
+    return cleanEntity(input, false, false);
   })
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
     const { supabase } = context;
+    const position = await nextPosition(supabase, "academic_levels");
+    const { data: row, error } = await supabase
+      .from("academic_levels")
+      .insert({
+        name: data.name,
+        slug: data.code || null,
+        description: data.description ?? "",
+        position,
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    return { id: row.id, tree: await loadTree(supabase) } satisfies AcademicMutationResult;
+  });
 
-    const levelRows = data.levels.map((l, i) => ({
-      id: l.id,
-      name: l.name,
-      slug: l.code || null,
-      description: l.description,
-      position: i,
-    }));
-    const subjectRows: Array<{
-      id: string;
-      level_id: string;
-      name: string;
-      slug: string | null;
-      description: string;
-      position: number;
-    }> = [];
-    type ChapterUpsert = {
-      id: string;
-      subject_id: string;
-      name: string;
-      slug: string | null;
-      description: string;
-      position: number;
-      status?: ChapterStatus;
+export const updateAcademicLevel = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => cleanEntity(input, true, false))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabase } = context;
+    const { data: rows, error } = await supabase
+      .from("academic_levels")
+      .update({ name: data.name, slug: data.code || null, description: data.description ?? "" })
+      .eq("id", data.id!)
+      .select("id");
+    if (error) throw new Error(error.message);
+    assertDeleted("Level", rows);
+    return { id: data.id!, tree: await loadTree(supabase) } satisfies AcademicMutationResult;
+  });
+
+export const deleteAcademicLevel = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => {
+    const src = (input ?? {}) as Record<string, unknown>;
+    const id = typeof src.id === "string" ? src.id : "";
+    if (!UUID_RE.test(id)) throw new Error("Valid level id is required");
+    return { id };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabase } = context;
+    const { data: rows, error } = await supabase
+      .from("academic_levels")
+      .delete()
+      .eq("id", data.id)
+      .select("id");
+    if (error) throw new Error(error.message);
+    assertDeleted("Level", rows);
+    return { id: data.id, tree: await loadTree(supabase) } satisfies AcademicMutationResult;
+  });
+
+export const createAcademicSubject = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => cleanEntity(input, false, true))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabase } = context;
+    const position = await nextPosition(supabase, "academic_subjects", {
+      column: "level_id",
+      id: data.parentId!,
+    });
+    const { data: row, error } = await supabase
+      .from("academic_subjects")
+      .insert({
+        level_id: data.parentId!,
+        name: data.name,
+        slug: data.code || null,
+        description: data.description ?? "",
+        position,
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    return { id: row.id, tree: await loadTree(supabase) } satisfies AcademicMutationResult;
+  });
+
+export const updateAcademicSubject = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => cleanEntity(input, true, false))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabase } = context;
+    const { data: rows, error } = await supabase
+      .from("academic_subjects")
+      .update({ name: data.name, slug: data.code || null, description: data.description ?? "" })
+      .eq("id", data.id!)
+      .select("id");
+    if (error) throw new Error(error.message);
+    assertDeleted("Subject", rows);
+    return { id: data.id!, tree: await loadTree(supabase) } satisfies AcademicMutationResult;
+  });
+
+export const deleteAcademicSubject = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => {
+    const src = (input ?? {}) as Record<string, unknown>;
+    const id = typeof src.id === "string" ? src.id : "";
+    if (!UUID_RE.test(id)) throw new Error("Valid subject id is required");
+    return { id };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabase } = context;
+    const { data: rows, error } = await supabase
+      .from("academic_subjects")
+      .delete()
+      .eq("id", data.id)
+      .select("id");
+    if (error) throw new Error(error.message);
+    assertDeleted("Subject", rows);
+    return { id: data.id, tree: await loadTree(supabase) } satisfies AcademicMutationResult;
+  });
+
+export const createAcademicChapter = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => cleanEntity(input, false, true))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabase } = context;
+    const position = await nextPosition(supabase, "academic_chapters", {
+      column: "subject_id",
+      id: data.parentId!,
+    });
+    const table = supabase.from("academic_chapters") as unknown as {
+      insert: (row: unknown) => { select: (cols: string) => { single: () => Promise<{ data: { id: string } | null; error: { message: string } | null }> } };
     };
-    const chapterRows: ChapterUpsert[] = [];
-    for (const l of data.levels) {
-      l.subjects.forEach((s, si) => {
-        subjectRows.push({
-          id: s.id,
-          level_id: l.id,
-          name: s.name,
-          slug: s.code || null,
-          description: s.description,
-          position: si,
-        });
-        s.chapters.forEach((c, ci) => {
-          chapterRows.push({
-            id: c.id,
-            subject_id: s.id,
-            name: c.name,
-            slug: c.code || null,
-            description: c.description,
-            position: ci,
-            status: normalizeStatus(c.status),
-          });
-        });
-      });
+    const { data: row, error } = await table
+      .insert({
+        subject_id: data.parentId!,
+        name: data.name,
+        slug: data.code || null,
+        description: data.description ?? "",
+        position,
+        status: normalizeStatus(data.status),
+      })
+      .select("id")
+      .single();
+    if (error) throw new Error(error.message);
+    if (!row) throw new Error("Chapter insert returned no row");
+    return { id: row.id, tree: await loadTree(supabase) } satisfies AcademicMutationResult;
+  });
+
+export const updateAcademicChapter = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => cleanEntity(input, true, false))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabase } = context;
+    const table = supabase.from("academic_chapters") as unknown as {
+      update: (row: unknown) => { eq: (col: string, value: string) => { select: (cols: string) => Promise<{ data: Array<{ id: string }> | null; error: { message: string } | null }> } };
+    };
+    const { data: rows, error } = await table
+      .update({
+        name: data.name,
+        slug: data.code || null,
+        description: data.description ?? "",
+        status: normalizeStatus(data.status),
+      })
+      .eq("id", data.id!)
+      .select("id");
+    if (error) throw new Error(error.message);
+    assertDeleted("Chapter", rows);
+    return { id: data.id!, tree: await loadTree(supabase) } satisfies AcademicMutationResult;
+  });
+
+export const deleteAcademicChapter = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => {
+    const src = (input ?? {}) as Record<string, unknown>;
+    const ids = Array.isArray(src.ids)
+      ? src.ids.filter((id): id is string => typeof id === "string" && UUID_RE.test(id))
+      : [];
+    const id = typeof src.id === "string" && UUID_RE.test(src.id) ? src.id : undefined;
+    const finalIds = ids.length ? ids : id ? [id] : [];
+    if (!finalIds.length) throw new Error("At least one valid chapter id is required");
+    return { ids: Array.from(new Set(finalIds)) };
+  })
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabase } = context;
+    const { data: rows, error } = await supabase
+      .from("academic_chapters")
+      .delete()
+      .in("id", data.ids)
+      .select("id");
+    if (error) throw new Error(error.message);
+    if ((rows?.length ?? 0) !== data.ids.length) {
+      throw new Error("One or more chapters were not found or were already deleted");
     }
-
-    if (levelRows.length) {
-      const r = await supabase.from("academic_levels").upsert(levelRows, { onConflict: "id" });
-      if (r.error) throw new Error(r.error.message);
-    }
-    if (subjectRows.length) {
-      const r = await supabase.from("academic_subjects").upsert(subjectRows, { onConflict: "id" });
-      if (r.error) throw new Error(r.error.message);
-    }
-    if (chapterRows.length) {
-      // status column is added by migration; if it isn't present on this env
-      // yet, retry without status so writes still succeed.
-      const tbl = supabase.from("academic_chapters") as unknown as {
-        upsert: (
-          rows: unknown,
-          opts: { onConflict: string },
-        ) => Promise<{ error: { message: string; code?: string } | null }>;
-      };
-      let r = await tbl.upsert(chapterRows, { onConflict: "id" });
-      if (r.error && /status/i.test(r.error.message)) {
-        const stripped = chapterRows.map(({ status, ...rest }) => {
-          void status;
-          return rest;
-        });
-        r = await tbl.upsert(stripped, { onConflict: "id" });
-      }
-      if (r.error) throw new Error(r.error.message);
-    }
-
-    const keepLevelIds = levelRows.map((r) => r.id);
-    const keepSubjectIds = subjectRows.map((r) => r.id);
-    const keepChapterIds = chapterRows.map((r) => r.id);
-
-    const delChapters = keepChapterIds.length
-      ? await supabase
-          .from("academic_chapters")
-          .delete()
-          .not("id", "in", `(${keepChapterIds.map((id) => `"${id}"`).join(",")})`)
-      : await supabase
-          .from("academic_chapters")
-          .delete()
-          .neq("id", "00000000-0000-0000-0000-000000000000");
-    if (delChapters.error) throw new Error(delChapters.error.message);
-
-    const delSubjects = keepSubjectIds.length
-      ? await supabase
-          .from("academic_subjects")
-          .delete()
-          .not("id", "in", `(${keepSubjectIds.map((id) => `"${id}"`).join(",")})`)
-      : await supabase
-          .from("academic_subjects")
-          .delete()
-          .neq("id", "00000000-0000-0000-0000-000000000000");
-    if (delSubjects.error) throw new Error(delSubjects.error.message);
-
-    const delLevels = keepLevelIds.length
-      ? await supabase
-          .from("academic_levels")
-          .delete()
-          .not("id", "in", `(${keepLevelIds.map((id) => `"${id}"`).join(",")})`)
-      : await supabase
-          .from("academic_levels")
-          .delete()
-          .neq("id", "00000000-0000-0000-0000-000000000000");
-    if (delLevels.error) throw new Error(delLevels.error.message);
-
-    return loadTree(supabase);
+    return { id: data.ids[0], tree: await loadTree(supabase) } satisfies AcademicMutationResult;
   });
