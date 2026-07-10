@@ -162,12 +162,6 @@ type Toast = { id: string; tone: ToastTone; message: string };
 
 /* ---------------------------------------------------------------- Utils */
 
-function nodeKey(r: NodeRef) {
-  if (r.kind === "level") return `L:${r.levelId}`;
-  if (r.kind === "subject") return `S:${r.levelId}:${r.subjectId}`;
-  return `C:${r.levelId}:${r.subjectId}:${r.chapterId}`;
-}
-
 const KIND_LABEL: Record<Kind, string> = {
   level: "Level",
   subject: "Subject",
@@ -479,281 +473,35 @@ function AcademicManagerPage() {
     };
     const nextStatus: ChapterStatus = values.status === "published" ? "published" : "draft";
     if (!clean.name) return;
-    const stamp = Date.now();
-
-    try {
-      if (editor.mode === "create") {
-        if (editor.kind === "level") {
-          const nl: Level = {
-            id: uid(),
-            ...clean,
-            createdAt: stamp,
-            updatedAt: stamp,
-            subjects: [],
-          };
-          setLevels((prev) => [...prev, nl]);
-          setActiveLevelId(nl.id);
-          setActiveSubjectId(null);
-          pushToast("success", `Level “${clean.name}” created.`);
-        } else if (editor.kind === "subject" && editor.parent?.kind === "level") {
-          const parentId = editor.parent.levelId;
-          const ns: Subject = {
-            id: uid(),
-            ...clean,
-            createdAt: stamp,
-            updatedAt: stamp,
-            chapters: [],
-          };
-          setLevels((prev) =>
-            prev.map((l) =>
-              l.id === parentId ? { ...l, updatedAt: stamp, subjects: [...l.subjects, ns] } : l,
-            ),
-          );
-          setActiveLevelId(parentId);
-          setActiveSubjectId(ns.id);
-          pushToast("success", `Subject “${clean.name}” created.`);
-        } else if (editor.kind === "chapter" && editor.parent?.kind === "subject") {
-          const { levelId, subjectId } = editor.parent;
-          const nc: Chapter = {
-            id: uid(),
-            ...clean,
-            status: nextStatus,
-            createdAt: stamp,
-            updatedAt: stamp,
-            mcqCount: 0,
-            quizCount: 0,
-            mockCount: 0,
-          };
-          setLevels((prev) =>
-            prev.map((l) =>
-              l.id !== levelId
-                ? l
-                : {
-                    ...l,
-                    updatedAt: stamp,
-                    subjects: l.subjects.map((s) =>
-                      s.id !== subjectId
-                        ? s
-                        : { ...s, updatedAt: stamp, chapters: [...s.chapters, nc] },
-                    ),
-                  },
-            ),
-          );
-          setActiveLevelId(levelId);
-          setActiveSubjectId(subjectId);
-          pushToast("success", `Chapter “${clean.name}” created.`);
-        }
-      } else {
-        const t = editor.target;
-        if (t.kind === "level") {
-          setLevels((prev) =>
-            prev.map((l) => (l.id === t.levelId ? { ...l, ...clean, updatedAt: stamp } : l)),
-          );
-        } else if (t.kind === "subject") {
-          setLevels((prev) =>
-            prev.map((l) =>
-              l.id !== t.levelId
-                ? l
-                : {
-                    ...l,
-                    updatedAt: stamp,
-                    subjects: l.subjects.map((s) =>
-                      s.id === t.subjectId ? { ...s, ...clean, updatedAt: stamp } : s,
-                    ),
-                  },
-            ),
-          );
-        } else {
-          setLevels((prev) =>
-            prev.map((l) =>
-              l.id !== t.levelId
-                ? l
-                : {
-                    ...l,
-                    updatedAt: stamp,
-                    subjects: l.subjects.map((s) =>
-                      s.id !== t.subjectId
-                        ? s
-                        : {
-                            ...s,
-                            updatedAt: stamp,
-                            chapters: s.chapters.map((c) =>
-                              c.id === t.chapterId
-                                ? { ...c, ...clean, status: nextStatus, updatedAt: stamp }
-                                : c,
-                            ),
-                          },
-                    ),
-                  },
-            ),
-          );
-        }
-        pushToast("success", `${KIND_LABEL[editor.kind]} updated.`);
+    if (editor.mode === "create") {
+      if (editor.kind === "level") createLevelMut.mutate(clean);
+      else if (editor.kind === "subject" && editor.parent?.kind === "level") {
+        createSubjectMut.mutate({ ...clean, parentId: editor.parent.levelId });
+      } else if (editor.kind === "chapter" && editor.parent?.kind === "subject") {
+        createChapterMut.mutate({ ...clean, parentId: editor.parent.subjectId, status: nextStatus });
       }
-      setEditor(null);
-    } catch {
-      pushToast("error", "Something went wrong. Please try again.");
+      return;
     }
+
+    const target = editor.target;
+    if (target.kind === "level") updateLevelMut.mutate({ ...clean, id: target.levelId });
+    else if (target.kind === "subject") updateSubjectMut.mutate({ ...clean, id: target.subjectId });
+    else updateChapterMut.mutate({ ...clean, id: target.chapterId, status: nextStatus });
   }
 
-  function removeRefs(refs: NodeRef[]) {
-    let removedL = 0,
-      removedS = 0,
-      removedC = 0;
-    const levelIds = new Set(refs.filter((r) => r.kind === "level").map((r) => r.levelId));
-    const subjectIds = new Set(
-      refs
-        .filter((r) => r.kind === "subject")
-        .map((r) => (r as Extract<NodeRef, { kind: "subject" }>).subjectId),
+  function deleteRefs(refs: NodeRef[]) {
+    const levelsToDelete = refs.filter((r): r is Extract<NodeRef, { kind: "level" }> => r.kind === "level");
+    const subjectsToDelete = refs.filter(
+      (r): r is Extract<NodeRef, { kind: "subject" }> => r.kind === "subject",
     );
-    const chapterIds = new Set(
-      refs
-        .filter((r) => r.kind === "chapter")
-        .map((r) => (r as Extract<NodeRef, { kind: "chapter" }>).chapterId),
+    const chaptersToDelete = refs.filter(
+      (r): r is Extract<NodeRef, { kind: "chapter" }> => r.kind === "chapter",
     );
-
-    setLevels((prev) => {
-      const next: Level[] = [];
-      for (const l of prev) {
-        if (levelIds.has(l.id)) {
-          removedL++;
-          removedS += l.subjects.length;
-          for (const s of l.subjects) removedC += s.chapters.length;
-          continue;
-        }
-        const subjects: Subject[] = [];
-        for (const s of l.subjects) {
-          if (subjectIds.has(s.id)) {
-            removedS++;
-            removedC += s.chapters.length;
-            continue;
-          }
-          const chapters = s.chapters.filter((c) => {
-            if (chapterIds.has(c.id)) {
-              removedC++;
-              return false;
-            }
-            return true;
-          });
-          subjects.push({ ...s, chapters });
-        }
-        next.push({ ...l, subjects });
-      }
-      return next;
-    });
-    setSelectedChapters(new Set());
-    const parts: string[] = [];
-    if (removedL) parts.push(`${removedL} level${removedL > 1 ? "s" : ""}`);
-    if (removedS) parts.push(`${removedS} subject${removedS > 1 ? "s" : ""}`);
-    if (removedC) parts.push(`${removedC} chapter${removedC > 1 ? "s" : ""}`);
-    pushToast("success", `Deleted ${parts.join(", ") || "items"}.`);
-  }
-
-  function duplicateNode(ref: NodeRef) {
-    const stamp = Date.now();
-    setLevels((prev) => {
-      if (ref.kind === "level") {
-        const src = prev.find((l) => l.id === ref.levelId);
-        if (!src) return prev;
-        const clone: Level = {
-          ...src,
-          id: uid(),
-          name: `${src.name} (Copy)`,
-          createdAt: stamp,
-          updatedAt: stamp,
-          subjects: src.subjects.map((s) => ({
-            ...s,
-            id: uid(),
-            createdAt: stamp,
-            updatedAt: stamp,
-            chapters: s.chapters.map((c) => ({
-              ...c,
-              id: uid(),
-              createdAt: stamp,
-              updatedAt: stamp,
-            })),
-          })),
-        };
-        return [...prev, clone];
-      }
-      return prev.map((l) => {
-        if (l.id !== ref.levelId) return l;
-        if (ref.kind === "subject") {
-          const src = l.subjects.find((s) => s.id === ref.subjectId);
-          if (!src) return l;
-          const clone: Subject = {
-            ...src,
-            id: uid(),
-            name: `${src.name} (Copy)`,
-            createdAt: stamp,
-            updatedAt: stamp,
-            chapters: src.chapters.map((c) => ({
-              ...c,
-              id: uid(),
-              createdAt: stamp,
-              updatedAt: stamp,
-            })),
-          };
-          return { ...l, updatedAt: stamp, subjects: [...l.subjects, clone] };
-        }
-        // chapter
-        return {
-          ...l,
-          updatedAt: stamp,
-          subjects: l.subjects.map((s) => {
-            if (s.id !== ref.subjectId) return s;
-            const src = s.chapters.find((c) => c.id === ref.chapterId);
-            if (!src) return s;
-            const clone: Chapter = {
-              ...src,
-              id: uid(),
-              name: `${src.name} (Copy)`,
-              createdAt: stamp,
-              updatedAt: stamp,
-            };
-            return { ...s, updatedAt: stamp, chapters: [...s.chapters, clone] };
-          }),
-        };
-      });
-    });
-    pushToast("success", `${KIND_LABEL[ref.kind]} duplicated.`);
-  }
-
-  /* ---- Import / Export ---- */
-  function onExport() {
-    try {
-      const blob = new Blob([JSON.stringify(levels, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `academic-manager-${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      pushToast("success", "Curriculum exported.");
-    } catch {
-      pushToast("error", "Export failed.");
+    if (levelsToDelete.length) deleteLevelMut.mutate(levelsToDelete[0].levelId);
+    else if (subjectsToDelete.length) deleteSubjectMut.mutate(subjectsToDelete[0].subjectId);
+    else if (chaptersToDelete.length) {
+      deleteChapterMut.mutate(chaptersToDelete.map((r) => r.chapterId));
     }
-  }
-  function onImportFile(file: File) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result));
-        if (!Array.isArray(parsed)) throw new Error("Invalid file");
-        setLevels(parsed);
-        if (parsed[0]) {
-          setActiveLevelId(parsed[0].id);
-          setActiveSubjectId(parsed[0].subjects?.[0]?.id ?? null);
-        }
-        pushToast("success", "Curriculum imported.");
-      } catch {
-        pushToast("error", "Invalid file. Please upload a valid export.");
-      }
-    };
-    reader.onerror = () => pushToast("error", "Could not read file.");
-    reader.readAsText(file);
   }
 
   /* ---- Chapter selection ---- */
