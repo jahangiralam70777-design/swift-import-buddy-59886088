@@ -295,15 +295,26 @@ function AcademicManagerPage() {
               name: c.name,
               code: c.code,
               description: c.description,
+              status: c.status,
             })),
           })),
         })),
       };
-      saveTree({ data: payload }).catch((err: unknown) => {
-        console.error("[academic-manager] save failed", err);
-        const msg = err instanceof Error ? err.message : String(err);
-        pushToast("error", `Save failed: ${msg}`);
-      });
+      saveTree({ data: payload })
+        .then((tree) => {
+          // Replace local state with the DB result so counts, timestamps
+          // and statuses match Supabase byte-for-byte. No derived values.
+          suppressSyncRef.current = true;
+          setLevels(tree as unknown as Level[]);
+          setTimeout(() => {
+            suppressSyncRef.current = false;
+          }, 0);
+        })
+        .catch((err: unknown) => {
+          console.error("[academic-manager] save failed", err);
+          const msg = err instanceof Error ? err.message : String(err);
+          pushToast("error", `Save failed: ${msg}`);
+        });
     }, 600);
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
